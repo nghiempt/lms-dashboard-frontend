@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { setSession, verifyCredentials, type AuthUser } from "@/lib/auth";
+import { HOME_BY_ROLE, setSession, verifyCredentials, type AuthUser } from "@/lib/auth";
 
 const LOGO = "/assets/16f53e33ca.png";
 
@@ -78,7 +78,7 @@ export default function Login() {
 
   function finishLogin(user: AuthUser) {
     setSession(user);
-    router.replace("/");
+    router.replace(HOME_BY_ROLE[user.roleKey]);
     router.refresh();
   }
 
@@ -90,7 +90,9 @@ export default function Login() {
     const password = String(data.get("password") || "");
     const user = verifyCredentials(email, password);
     if (!user) {
-      setError("Email hoặc mật khẩu không đúng. Thử admin@admin.com / admin.");
+      setError(
+        "Email hoặc mật khẩu không đúng. Thử admin@admin.com / admin hoặc student@student.com / student."
+      );
       return;
     }
     finishLogin(user);
@@ -102,8 +104,15 @@ export default function Login() {
     const data = new FormData(e.currentTarget);
     const name = String(data.get("name") || "").trim() || "Học viên mới";
     const email = String(data.get("email") || "").trim();
-    // Fake: tạo phiên ngay sau khi đăng ký.
-    finishLogin({ name, email, role: "Học viên" });
+    const initials =
+      name
+        .split(" ")
+        .map((w) => w[0])
+        .slice(-2)
+        .join("")
+        .toUpperCase() || "HV";
+    // Fake: tạo phiên ngay sau khi đăng ký (mặc định vai trò học viên).
+    finishLogin({ name, email, role: "Học viên", roleKey: "student", initials });
   }
 
   return (
@@ -187,6 +196,14 @@ export default function Login() {
             <button className="btn btn-primary" type="submit">
               Đăng nhập
             </button>
+            <p
+              className="sub"
+              style={{ marginTop: 14, fontSize: 12.5, textAlign: "center", lineHeight: 1.7 }}
+            >
+              Demo · Admin: <b>admin@admin.com</b> / admin
+              <br />
+              Học viên: <b>student@student.com</b> / student
+            </p>
             <div className="divider">hoặc</div>
             <button className="btn btn-google" type="button">
               <GoogleIcon />
