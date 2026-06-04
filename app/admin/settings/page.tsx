@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
+import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { refreshCurrentUser } from "@/lib/auth";
 
@@ -28,6 +29,7 @@ interface Me { fullName: string; email: string }
 type ToggleKey = "payment.sepay" | "payment.bank" | "notify.new_order" | "notify.refund";
 
 export default function AdminSettingsPage() {
+  const toast = useToast();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [profileMsg, setProfileMsg] = useState("");
@@ -60,9 +62,13 @@ export default function AdminSettingsPage() {
 
   async function saveProfile() {
     setProfileMsg("");
-    await api.patch("/users/me", { fullName: displayName }).catch((e) => setProfileMsg((e as Error).message));
-    await refreshCurrentUser();
-    setProfileMsg("Đã lưu hồ sơ.");
+    try {
+      await api.patch("/users/me", { fullName: displayName });
+      await refreshCurrentUser();
+      toast.success("Đã lưu hồ sơ.");
+    } catch (e) {
+      toast.error((e as Error).message || "Lưu hồ sơ thất bại.");
+    }
   }
   async function changePassword() {
     setPwMsg("");
@@ -70,7 +76,8 @@ export default function AdminSettingsPage() {
     if (newPw !== confirmPw) return setPwMsg("Mật khẩu nhập lại không khớp.");
     try {
       await api.post("/auth/change-password", { currentPassword: curPw, newPassword: newPw });
-      setCurPw(""); setNewPw(""); setConfirmPw(""); setPwMsg("Đổi mật khẩu thành công.");
+      setCurPw(""); setNewPw(""); setConfirmPw("");
+      toast.success("Đổi mật khẩu thành công.");
     } catch (e) { setPwMsg((e as Error).message); }
   }
   async function saveSite() {
@@ -82,13 +89,23 @@ export default function AdminSettingsPage() {
       { key: "social.tiktok", value: site["social.tiktok"], group: "social" },
       { key: "social.youtube", value: site["social.youtube"], group: "social" },
     ];
-    await api.post("/settings", { items }).catch((e) => setSiteMsg((e as Error).message));
-    setSiteMsg("Đã lưu cấu hình.");
+    try {
+      await api.post("/settings", { items });
+      toast.success("Đã lưu cấu hình.");
+    } catch (e) {
+      toast.error((e as Error).message || "Lưu cấu hình thất bại.");
+    }
   }
   async function flip(key: ToggleKey) {
-    const next = !toggles[key];
-    setToggles((t) => ({ ...t, [key]: next }));
-    await api.post("/settings", { items: [{ key, value: String(next), group: "payment", type: "boolean" }] }).catch(() => undefined);
+    const prev = toggles[key];
+    const next = !prev;
+    setToggles((t) => ({ ...t, [key]: next })); // optimistic
+    try {
+      await api.post("/settings", { items: [{ key, value: String(next), group: "payment", type: "boolean" }] });
+    } catch (e) {
+      setToggles((t) => ({ ...t, [key]: prev })); // revert khi lỗi
+      toast.error((e as Error).message || "Cập nhật thất bại.");
+    }
   }
 
   const Toggle = ({ k, name, desc }: { k: ToggleKey; name: string; desc: string }) => (

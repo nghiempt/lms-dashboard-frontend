@@ -155,11 +155,3 @@ export const NbCard = (
     <path d="M2 10h20" />
   </svg>
 );
-
-/* dropdown notif data dùng chung cho bell ở mọi trang */
-export const BELL_NOTIFS = [
-  { ic: NbBook, color: "blue", time: "10 phút trước", unread: true },
-  { ic: NbChat, color: "blue", time: "2 giờ trước", unread: true },
-  { ic: NbTag, color: "orange", time: "1 ngày trước", unread: false },
-  { ic: NbCheck, color: "green", time: "2 ngày trước", unread: false },
-] as const;

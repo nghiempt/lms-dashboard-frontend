@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import AdminShell from "../../components/AdminShell";
+import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { compactVnd, vnd } from "@/lib/format";
 
@@ -26,12 +28,18 @@ const STATUS: Record<string, { cls: string; label: string }> = {
   ARCHIVED: { cls: "hidden2", label: "Ẩn" },
 };
 
-export default function AdminCoursesPage() {
+function AdminCoursesInner() {
   const router = useRouter();
+  const toast = useToast();
+  const searchParams = useSearchParams();
+  const q = searchParams.get("search") ?? "";
   const [rows, setRows] = useState<CourseRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [delId, setDelId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const titleRef = useRef<HTMLInputElement>(null);
   const priceRef = useRef<HTMLInputElement>(null);
@@ -39,9 +47,15 @@ export default function AdminCoursesPage() {
   const descRef = useRef<HTMLTextAreaElement>(null);
 
   function load() {
-    api.getFull<CourseRow[]>("/courses", { limit: 100 }).then((r) => setRows(r.data ?? [])).catch(() => undefined);
+    setLoading(true);
+    setLoadError("");
+    api.getFull<CourseRow[]>("/courses", { limit: 100, search: q || undefined })
+      .then((r) => setRows(r.data ?? []))
+      .catch((e) => setLoadError((e as Error).message || "Không tải được khóa học."))
+      .finally(() => setLoading(false));
   }
-  useEffect(load, []);
+  // tải lại khi từ khóa tìm kiếm trên topbar thay đổi
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [q]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setModalOpen(false); setDelId(null); } };
@@ -51,7 +65,11 @@ export default function AdminCoursesPage() {
 
   async function handleCreate() {
     const title = (titleRef.current?.value ?? "").trim();
-    if (!title) return;
+    if (!title) {
+      toast.error("Vui lòng nhập tên khóa học.");
+      titleRef.current?.focus();
+      return;
+    }
     const price = Number((priceRef.current?.value ?? "0").replace(/\D/g, "")) || 0;
     const status = statusRef.current?.value === "Ẩn" ? "DRAFT" : "PUBLISHED";
     setSaving(true);
@@ -64,7 +82,11 @@ export default function AdminCoursesPage() {
         description: descRef.current?.value ?? "",
       });
       setModalOpen(false);
+      toast.success("Đã tạo khóa học.");
       load();
+    } catch (e) {
+      // không nuốt lỗi: modal vẫn mở để người dùng thử lại
+      toast.error((e as Error).message || "Tạo khóa học thất bại.");
     } finally {
       setSaving(false);
     }
@@ -72,9 +94,17 @@ export default function AdminCoursesPage() {
 
   async function confirmDelete() {
     if (!delId) return;
-    await api.del(`/courses/${delId}`).catch(() => undefined);
-    setDelId(null);
-    load();
+    setDeleting(true);
+    try {
+      await api.del(`/courses/${delId}`);
+      toast.success("Đã xóa khóa học.");
+      setDelId(null);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Xóa thất bại.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -91,11 +121,20 @@ export default function AdminCoursesPage() {
       <div className="panel">
         <div className="panel-h">
           <h3>Tất cả khóa học</h3>
-          <span className="sub">{rows.length} khóa</span>
+          <span className="sub">
+            {q ? <>Kết quả cho “{q}” · {rows.length} khóa · <Link href="/admin/courses">Xóa lọc</Link></> : `${rows.length} khóa`}
+          </span>
         </div>
         <div className="atbl-h" style={{ gridTemplateColumns: GRID }}>
           <div>Khóa học</div><div>Giá</div><div>Học viên</div><div>Doanh thu</div><div>Trạng thái</div><div />
         </div>
+        {loadError && (
+          <div className="list-error">
+            <span>{loadError}</span>
+            <button type="button" className="retry" onClick={load}>Thử lại</button>
+          </div>
+        )}
+        {loading && !loadError && [0, 1, 2].map((i) => <div key={i} className="skeleton-row" />)}
         {rows.map((row) => {
           const st = STATUS[row.status] ?? STATUS.DRAFT;
           return (
@@ -122,7 +161,7 @@ export default function AdminCoursesPage() {
             </div>
           );
         })}
-        {rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có khóa học.</div>}
+        {!loading && !loadError && rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có khóa học.</div>}
       </div>
 
       {/* Add Course Modal */}
@@ -163,11 +202,19 @@ export default function AdminCoursesPage() {
           <h3>Xóa khóa học?</h3>
           <p>Hành động này không thể hoàn tác.</p>
           <div className="modal-act">
-            <button type="button" className="btn-sec" onClick={() => setDelId(null)}>Hủy</button>
-            <button type="button" className="btn-danger" onClick={confirmDelete}>Xóa</button>
+            <button type="button" className="btn-sec" onClick={() => setDelId(null)} disabled={deleting}>Hủy</button>
+            <button type="button" className="btn-danger" onClick={confirmDelete} disabled={deleting}>{deleting ? "Đang xóa..." : "Xóa"}</button>
           </div>
         </div>
       </div>
     </AdminShell>
+  );
+}
+
+export default function AdminCoursesPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminCoursesInner />
+    </Suspense>
   );
 }

@@ -196,6 +196,49 @@ export async function apiRequest<T = unknown>(
   return json;
 }
 
+/**
+ * Upload file (multipart/form-data) qua media endpoint — đi đúng vòng đời
+ * auth: gắn Bearer + x-device-id, tự refresh 401 và retry 1 lần, guard JSON.
+ * Trả về object media { id, url, ... } trong envelope.data.
+ */
+export async function uploadMedia<T = { id: string; url: string }>(
+  form: FormData,
+  opts: { path?: string; retry?: boolean } = {},
+): Promise<T> {
+  const { path = "/media/upload", retry = true } = opts;
+  const headers: Record<string, string> = {};
+  const token = tokenStore.getAccess();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  headers["x-device-id"] = getDeviceId();
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers, // KHÔNG set Content-Type để browser tự thêm boundary
+    body: form,
+  });
+
+  if (res.status === 401 && retry) {
+    const ok = await tryRefresh();
+    if (ok) return uploadMedia<T>(form, { ...opts, retry: false });
+    tokenStore.clear();
+    clearAuthCookies();
+  }
+
+  const json = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
+  if (!json) {
+    throw new ApiError("Tải lên thất bại: phản hồi không hợp lệ.", "NETWORK", res.status);
+  }
+  if (!json.success || !json.data) {
+    throw new ApiError(
+      json.error?.message ?? "Tải lên thất bại.",
+      json.error?.code ?? "UPLOAD_ERROR",
+      res.status,
+      json.error?.details,
+    );
+  }
+  return json.data;
+}
+
 /** Helpers gọn: trả thẳng data. */
 export const api = {
   get: <T>(path: string, query?: RequestOpts["query"]) =>

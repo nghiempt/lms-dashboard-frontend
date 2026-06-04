@@ -4,6 +4,8 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AdminShell from "../../../components/AdminShell";
+import ConfirmDialog from "../../../components/ConfirmDialog";
+import { useToast } from "../../../components/Toast";
 import { api } from "@/lib/api";
 
 interface Lesson {
@@ -32,15 +34,25 @@ const PlusIcon = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
 );
 
+interface PendingDelete {
+  kind: "chapter" | "lesson";
+  id: string;
+  label: string;
+}
+
 function EditInner() {
+  const toast = useToast();
   const courseId = useSearchParams().get("id") ?? "";
   const [course, setCourse] = useState<CourseTree | null>(null);
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [desc, setDesc] = useState("");
   const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
   const [chModalOpen, setChModalOpen] = useState(false);
   const [chTitle, setChTitle] = useState("");
+  const [pendingDel, setPendingDel] = useState<PendingDelete | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!courseId) return;
@@ -71,51 +83,82 @@ function EditInner() {
 
   async function saveAll() {
     if (!course) return;
+    // Validate phía client trước khi gửi
+    if (!title.trim()) return toast.error("Tiêu đề khóa học không được để trống.");
+    for (const ch of course.chapters) {
+      if (!ch.title.trim()) return toast.error("Tên chương không được để trống.");
+      for (const l of ch.lessons) {
+        if (!l.title.trim()) return toast.error("Tên bài học không được để trống.");
+      }
+    }
+    setSaving(true);
     setMsg("Đang lưu...");
     try {
-      await api.patch(`/courses/${course.id}`, {
-        title,
+      // MỘT request atomic — BE ghi trong transaction, không còn N+1 ghi dở.
+      await api.patch(`/courses/${course.id}/tree`, {
+        title: title.trim(),
         price: Number(price.replace(/\D/g, "")) || 0,
         description: desc,
-      });
-      for (const ch of course.chapters) {
-        await api.patch(`/courses/chapters/${ch.id}`, { title: ch.title });
-        for (const l of ch.lessons) {
-          await api.patch(`/courses/lessons/${l.id}`, {
-            title: l.title,
+        chapters: course.chapters.map((ch) => ({
+          id: ch.id,
+          title: ch.title.trim(),
+          lessons: ch.lessons.map((l) => ({
+            id: l.id,
+            title: l.title.trim(),
             videoSource: l.videoSource,
             bunnyVideoId: l.videoSource === "BUNNY" ? l.bunnyVideoId : null,
             videoUrl: l.videoSource === "YOUTUBE" ? l.videoUrl : null,
             level: l.level,
             isPreview: l.isPreview,
             isLocked: l.isLocked,
-          });
-        }
-      }
-      setMsg("Đã lưu khóa học.");
+          })),
+        })),
+      });
+      setMsg("");
+      toast.success("Đã lưu khóa học.");
     } catch (e) {
-      setMsg((e as Error).message);
+      setMsg("");
+      toast.error((e as Error).message || "Lưu thất bại.");
+    } finally {
+      setSaving(false);
     }
   }
 
   async function addChapter() {
     if (!course) return;
-    await api.post(`/courses/${course.id}/chapters`, { title: chTitle.trim() || `Chương ${course.chapters.length + 1}` });
-    setChTitle("");
-    setChModalOpen(false);
-    load();
-  }
-  async function delChapter(id: string) {
-    await api.del(`/courses/chapters/${id}`);
-    load();
+    try {
+      await api.post(`/courses/${course.id}/chapters`, { title: chTitle.trim() || `Chương ${course.chapters.length + 1}` });
+      setChTitle("");
+      setChModalOpen(false);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Thêm chương thất bại.");
+    }
   }
   async function addLesson(chId: string) {
-    await api.post(`/courses/chapters/${chId}/lessons`, { title: "Bài học mới" });
-    load();
+    try {
+      await api.post(`/courses/chapters/${chId}/lessons`, { title: "Bài học mới" });
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Thêm bài học thất bại.");
+    }
   }
-  async function delLesson(id: string) {
-    await api.del(`/courses/lessons/${id}`);
-    load();
+  async function confirmDelete() {
+    if (!pendingDel) return;
+    setDeleting(true);
+    try {
+      const path = pendingDel.kind === "chapter"
+        ? `/courses/chapters/${pendingDel.id}`
+        : `/courses/lessons/${pendingDel.id}`;
+      await api.del(path);
+      toast.success(pendingDel.kind === "chapter" ? "Đã xóa chương." : "Đã xóa bài học.");
+      setPendingDel(null);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Xóa thất bại.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (!courseId) return <AdminShell title="Chỉnh sửa khóa học" subtitle=""><div className="panel" style={{ padding: 24 }}>Thiếu mã khóa học. <Link href="/admin/courses">← Quay lại</Link></div></AdminShell>;
@@ -124,7 +167,7 @@ function EditInner() {
     <AdminShell
       title="Chỉnh sửa khóa học"
       subtitle={course ? `${course.title} — quản lý chương, bài học & video.` : "Đang tải..."}
-      actions={<button className="btn-sm" type="button" onClick={saveAll}>Lưu khóa học</button>}
+      actions={<button className="btn-sm" type="button" onClick={saveAll} disabled={saving}>{saving ? "Đang lưu..." : "Lưu khóa học"}</button>}
     >
       {msg && <div className="panel" style={{ padding: 12, marginBottom: 14, color: "var(--accent)" }}>{msg}</div>}
 
@@ -158,7 +201,7 @@ function EditInner() {
               <input className="fld ch-title" value={ch.title} onChange={(e) => patchChapterTitleLocal(ch.id, e.target.value)} />
               <div className="ch-act">
                 <button className="btn-add" type="button" onClick={() => addLesson(ch.id)}>{PlusIcon}Bài học</button>
-                <button className="icon-btn-sm ch-del" type="button" title="Xóa chương" onClick={() => delChapter(ch.id)}>{TrashIcon}</button>
+                <button className="icon-btn-sm ch-del" type="button" title="Xóa chương" onClick={() => setPendingDel({ kind: "chapter", id: ch.id, label: ch.title })}>{TrashIcon}</button>
               </div>
             </div>
             <div className="lessons">
@@ -167,7 +210,7 @@ function EditInner() {
                   <div className="ls-h">
                     <span className="ls-no">{ci + 1}.{li + 1}</span>
                     <input className="fld ls-title" placeholder="Tên bài học" value={l.title} onChange={(e) => patchLessonLocal(ch.id, l.id, "title", e.target.value)} />
-                    <button className="ls-del icon-btn-sm" type="button" title="Xóa bài" onClick={() => delLesson(l.id)}>{TrashIcon}</button>
+                    <button className="ls-del icon-btn-sm" type="button" title="Xóa bài" onClick={() => setPendingDel({ kind: "lesson", id: l.id, label: l.title })}>{TrashIcon}</button>
                   </div>
                   <div className="ls-meta">
                     <select className="fld" value={l.videoSource} onChange={(e) => patchLessonLocal(ch.id, l.id, "videoSource", e.target.value)}>
@@ -200,6 +243,20 @@ function EditInner() {
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={!!pendingDel}
+        title={pendingDel?.kind === "chapter" ? "Xóa chương?" : "Xóa bài học?"}
+        message={
+          pendingDel?.kind === "chapter"
+            ? <>Xóa chương <b>{pendingDel?.label || "này"}</b> sẽ xóa toàn bộ bài học bên trong. Hành động này không thể hoàn tác.</>
+            : <>Bạn có chắc muốn xóa bài học <b>{pendingDel?.label || "này"}</b>? Hành động này không thể hoàn tác.</>
+        }
+        confirmLabel="Xóa"
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDel(null)}
+      />
 
       <div className={"modal-ov" + (chModalOpen ? " open" : "")} onClick={(e) => e.target === e.currentTarget && setChModalOpen(false)}>
         <div className="modal">

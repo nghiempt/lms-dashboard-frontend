@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import DashboardShell from "../components/DashboardShell";
-import { api } from "@/lib/api";
+import { useToast } from "../components/Toast";
+import { api, uploadMedia } from "@/lib/api";
 import { refreshCurrentUser } from "@/lib/auth";
 
 const AVATAR = "/assets/avatar.jpg";
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2MB như UI ghi
 
 const EyeIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -41,6 +43,7 @@ function PwRow({ label, value, onChange }: { label: string; value: string; onCha
 }
 
 export default function SettingsPage() {
+  const toast = useToast();
   const [me, setMe] = useState<Me | null>(null);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -74,39 +77,46 @@ export default function SettingsPage() {
       await api.patch("/users/me", { fullName, phone, bio });
       await refreshCurrentUser();
       setProfileDirty(false);
-      setMsg("Đã lưu hồ sơ.");
+      toast.success("Đã lưu hồ sơ.");
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message || "Lưu hồ sơ thất bại.");
     }
   }
 
   async function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Vui lòng chọn file ảnh.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error("Ảnh vượt quá 2MB.");
+      e.target.value = "";
+      return;
+    }
     setMsg("Đang tải ảnh...");
     try {
       const form = new FormData();
       form.append("file", file);
       form.append("folder", "avatars");
       form.append("type", "IMAGE");
-      const token = localStorage.getItem("lms_access");
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1"}/media/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "x-device-id": localStorage.getItem("lms_device") || "" },
-        body: form,
-      });
-      const j = await res.json();
-      const url = j?.data?.url as string;
+      const media = await uploadMedia(form); // qua api wrapper: refresh 401 + guard JSON
+      const url = media?.url;
       if (url) {
         await api.patch("/users/me", { avatarUrl: url });
         setAvatarUrl(url);
         await refreshCurrentUser();
-        setMsg("Đã cập nhật ảnh đại diện.");
+        setMsg("");
+        toast.success("Đã cập nhật ảnh đại diện.");
       } else {
-        setMsg("Tải ảnh thất bại.");
+        setMsg("");
+        toast.error("Tải ảnh thất bại.");
       }
     } catch (err) {
-      setMsg((err as Error).message);
+      setMsg("");
+      toast.error((err as Error).message || "Tải ảnh thất bại.");
     }
   }
 
@@ -117,16 +127,23 @@ export default function SettingsPage() {
     try {
       await api.post("/auth/change-password", { currentPassword: curPw, newPassword: newPw });
       setCurPw(""); setNewPw(""); setConfirmPw("");
-      setPwMsg("Đổi mật khẩu thành công.");
+      setPwMsg("");
+      toast.success("Đổi mật khẩu thành công.");
     } catch (e) {
       setPwMsg((e as Error).message);
     }
   }
 
   async function toggle(key: keyof typeof toggles) {
-    const next = { ...toggles, [key]: !toggles[key] };
-    setToggles(next);
-    await api.patch("/users/me/notifications", { [key]: next[key] }).catch(() => undefined);
+    const prev = toggles[key];
+    const next = { ...toggles, [key]: !prev };
+    setToggles(next); // optimistic
+    try {
+      await api.patch("/users/me/notifications", { [key]: next[key] });
+    } catch (e) {
+      setToggles((t) => ({ ...t, [key]: prev })); // revert khi lỗi
+      toast.error((e as Error).message || "Cập nhật thất bại.");
+    }
   }
 
   const TOGGLE_META: { key: keyof typeof toggles; name: string; desc: string }[] = [

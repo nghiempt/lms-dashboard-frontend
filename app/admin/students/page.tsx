@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
+import ConfirmDialog from "../../components/ConfirmDialog";
+import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { formatDate, vnd } from "@/lib/format";
 
@@ -27,19 +29,27 @@ function initials(name: string) {
 }
 
 export default function AdminStudentsPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<StudentRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [detail, setDetail] = useState<StudentDetail | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editName, setEditName] = useState("");
   const [editLocked, setEditLocked] = useState(false);
   const [del, setDel] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function load() {
+    setLoading(true);
+    setLoadError("");
     api.getFull<StudentRow[]>("/users/students", { limit: 100 }).then((r) => {
       setRows(r.data ?? []);
       setTotal(Number(r.meta?.total ?? r.data?.length ?? 0));
-    }).catch(() => undefined);
+    }).catch((e) => setLoadError((e as Error).message || "Không tải được học viên."))
+      .finally(() => setLoading(false));
   }
   useEffect(load, []);
 
@@ -60,19 +70,37 @@ export default function AdminStudentsPage() {
 
   async function saveDrawer() {
     if (!detail) return;
-    await api.patch(`/users/students/${detail.id}`, {
-      fullName: editName,
-      status: editLocked ? "LOCKED" : "ACTIVE",
-    });
-    setDrawerOpen(false);
-    load();
+    if (!editName.trim()) return toast.error("Tên học viên không được để trống.");
+    setSaving(true);
+    try {
+      await api.patch(`/users/students/${detail.id}`, {
+        fullName: editName.trim(),
+        status: editLocked ? "LOCKED" : "ACTIVE",
+      });
+      toast.success("Đã lưu thay đổi.");
+      setDrawerOpen(false);
+      load();
+    } catch (e) {
+      // không giấu lỗi: giữ drawer mở để người dùng biết & thử lại
+      toast.error((e as Error).message || "Lưu thất bại.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function confirmDel() {
     if (!del) return;
-    await api.del(`/users/students/${del.id}`).catch(() => undefined);
-    setDel(null);
-    load();
+    setDeleting(true);
+    try {
+      await api.del(`/users/students/${del.id}`);
+      toast.success("Đã xóa học viên.");
+      setDel(null);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Xóa thất bại.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -80,11 +108,18 @@ export default function AdminStudentsPage() {
       <div className="panel">
         <div className="panel-h">
           <h3>Danh sách học viên</h3>
-          <span className="sub">{total} học viên</span>
+          <span className="sub">{rows.length < total ? `Hiển thị ${rows.length}/${total} học viên` : `${total} học viên`}</span>
         </div>
         <div className="atbl-h" style={{ gridTemplateColumns: GRID }}>
           <div>Học viên</div><div>Email</div><div>Khóa</div><div>Tiến độ học</div><div>Ngày tham gia</div><div>Trạng thái</div><div />
         </div>
+        {loadError && (
+          <div className="list-error">
+            <span>{loadError}</span>
+            <button type="button" className="retry" onClick={load}>Thử lại</button>
+          </div>
+        )}
+        {loading && !loadError && [0, 1, 2].map((i) => <div key={i} className="skeleton-row" />)}
         {rows.map((s) => (
           <div key={s.id} className="atbl-r" style={{ gridTemplateColumns: GRID }}>
             <div className="a-name">
@@ -111,7 +146,7 @@ export default function AdminStudentsPage() {
             </div>
           </div>
         ))}
-        {rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có học viên.</div>}
+        {!loading && !loadError && rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có học viên.</div>}
       </div>
 
       {/* Drawer */}
@@ -166,23 +201,21 @@ export default function AdminStudentsPage() {
             )}
           </div>
           <div className="dw-foot">
-            <button type="button" className="btn-sec" onClick={() => setDrawerOpen(false)}>Hủy</button>
-            <button type="button" className="btn-danger" onClick={saveDrawer}>Lưu thay đổi</button>
+            <button type="button" className="btn-sec" onClick={() => setDrawerOpen(false)} disabled={saving}>Hủy</button>
+            <button type="button" className="btn-danger" onClick={saveDrawer} disabled={saving}>{saving ? "Đang lưu..." : "Lưu thay đổi"}</button>
           </div>
         </div>
       </div>
 
-      {/* Delete modal */}
-      <div className={"modal-ov" + (del ? " open" : "")} onClick={(e) => e.target === e.currentTarget && setDel(null)}>
-        <div className="modal">
-          <h3>Xóa học viên?</h3>
-          <p>Bạn có chắc muốn xóa <b>{del?.name}</b>? Hành động này không thể hoàn tác.</p>
-          <div className="modal-act">
-            <button type="button" className="btn-sec" onClick={() => setDel(null)}>Hủy</button>
-            <button type="button" className="btn-danger" onClick={confirmDel}>Xóa</button>
-          </div>
-        </div>
-      </div>
+      <ConfirmDialog
+        open={!!del}
+        title="Xóa học viên?"
+        message={<>Bạn có chắc muốn xóa <b>{del?.name}</b>? Hành động này không thể hoàn tác.</>}
+        confirmLabel="Xóa"
+        busy={deleting}
+        onConfirm={confirmDel}
+        onCancel={() => setDel(null)}
+      />
     </AdminShell>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardShell from "../../components/DashboardShell";
 import { api } from "@/lib/api";
 import { duration } from "@/lib/format";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 
 interface LessonNode {
   id: string;
@@ -60,6 +61,8 @@ export default function LearnPage() {
   const [play, setPlay] = useState<PlayData | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // mốc thời gian mở bài học hiện tại → đo thời lượng xem thực tế (không bịa).
+  const openedAtRef = useRef<number | null>(null);
 
   const loadDetail = useCallback(async () => {
     const d = await api.get<CourseDetail>(`/courses/${courseId}/detail`);
@@ -82,6 +85,7 @@ export default function LearnPage() {
     setActive(l);
     setPlay(null);
     setError("");
+    openedAtRef.current = Date.now(); // bắt đầu đo thời lượng xem
     try {
       const p = await api.get<PlayData>(`/courses/lessons/${l.id}/play`);
       setPlay(p);
@@ -94,14 +98,21 @@ export default function LearnPage() {
     if (!active) return;
     setSaving(true);
     try {
-      const dur = active.durationSec ?? 300;
+      // Thời lượng xem THỰC TẾ (giây) = thời gian ở trên bài học, chặn trên bằng
+      // độ dài bài học nếu có. Không còn bịa watchedSec = durationSec/300.
+      const elapsedSec = openedAtRef.current
+        ? Math.max(1, Math.round((Date.now() - openedAtRef.current) / 1000))
+        : 1;
+      const watched = active.durationSec
+        ? Math.min(elapsedSec, active.durationSec)
+        : elapsedSec;
       await api.post("/my/progress", {
         lessonId: active.id,
-        watchedSec: dur,
-        lastPositionSec: dur,
+        watchedSec: watched,
+        lastPositionSec: watched,
         status: "COMPLETED",
       });
-      await api.post("/my/study-session", { lessonId: active.id, durationSec: dur });
+      await api.post("/my/study-session", { lessonId: active.id, durationSec: watched });
       const d = await loadDetail();
       // cập nhật active từ dữ liệu mới
       const updated = d.chapters.flatMap((c) => c.lessons).find((x) => x.id === active.id);
@@ -126,7 +137,7 @@ export default function LearnPage() {
     >
       {error && <div className="panel" style={{ padding: 14, marginBottom: 14, color: "#c0392b" }}>{error}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 20, alignItems: "start" }}>
+      <div className="player-grid">
         {/* Player */}
         <div className="panel">
           {active ? (
@@ -139,7 +150,7 @@ export default function LearnPage() {
                   <iframe src={`https://www.youtube.com/embed/${play.video.youtubeId}`} title={play.title} allow="fullscreen" style={{ width: "100%", height: "100%", border: 0 }} />
                 )}
                 {play && !play.video && play.type === "ARTICLE" && (
-                  <div style={{ color: "#fff", padding: 24, height: "100%", overflow: "auto" }} dangerouslySetInnerHTML={{ __html: play.articleHtml ?? "" }} />
+                  <div style={{ color: "#fff", padding: 24, height: "100%", overflow: "auto" }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(play.articleHtml) }} />
                 )}
                 {play && !play.video && play.type !== "ARTICLE" && (
                   <div style={{ color: "#fff", display: "grid", placeItems: "center", height: "100%" }}>Bài học chưa có video</div>

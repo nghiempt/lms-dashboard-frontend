@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
+import ConfirmDialog from "../../components/ConfirmDialog";
+import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 
@@ -28,18 +30,29 @@ const DelIcon = (
 );
 
 export default function AnnouncementsPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<Noti[]>([]);
   const [courses, setCourses] = useState<CourseOpt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [target, setTarget] = useState("ALL"); // "ALL" | courseId
   const [msg, setMsg] = useState("");
+  const [sending, setSending] = useState(false);
   const [edit, setEdit] = useState<Noti | null>(null);
   const [eTitle, setETitle] = useState("");
   const [eBody, setEBody] = useState("");
+  const [delRow, setDelRow] = useState<Noti | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function load() {
-    api.getFull<Noti[]>("/notifications/admin", { limit: 100 }).then((r) => setRows(r.data ?? [])).catch(() => undefined);
+    setLoading(true);
+    setLoadError("");
+    api.getFull<Noti[]>("/notifications/admin", { limit: 100 })
+      .then((r) => setRows(r.data ?? []))
+      .catch((e) => setLoadError((e as Error).message || "Không tải được thông báo."))
+      .finally(() => setLoading(false));
   }
   useEffect(() => {
     load();
@@ -60,26 +73,55 @@ export default function AnnouncementsPage() {
 
   async function send(asDraft: boolean) {
     if (!title.trim()) return setMsg("Nhập tiêu đề.");
+    if (!body.trim()) return setMsg("Nhập nội dung.");
     setMsg("");
-    await api.post("/notifications/send", payload(asDraft)).catch((e) => setMsg((e as Error).message));
-    setTitle(""); setBody(""); setTarget("ALL");
-    load();
-    setMsg(asDraft ? "Đã lưu nháp." : "Đã gửi thông báo.");
+    setSending(true);
+    try {
+      await api.post("/notifications/send", payload(asDraft));
+      // chỉ clear form & báo thành công khi API thực sự thành công
+      setTitle(""); setBody(""); setTarget("ALL");
+      toast.success(asDraft ? "Đã lưu nháp." : "Đã gửi thông báo.");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Gửi thông báo thất bại.");
+    } finally {
+      setSending(false);
+    }
   }
 
   async function sendDraft(id: string) {
-    await api.post(`/notifications/admin/${id}/send`).catch(() => undefined);
-    load();
+    try {
+      await api.post(`/notifications/admin/${id}/send`);
+      toast.success("Đã gửi thông báo.");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Gửi thất bại.");
+    }
   }
-  async function del(id: string) {
-    await api.del(`/notifications/admin/${id}`).catch(() => undefined);
-    load();
+  async function confirmDelete() {
+    if (!delRow) return;
+    setDeleting(true);
+    try {
+      await api.del(`/notifications/admin/${delRow.id}`);
+      toast.success("Đã xóa thông báo.");
+      setDelRow(null);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Xóa thất bại.");
+    } finally {
+      setDeleting(false);
+    }
   }
   async function saveEdit() {
     if (!edit) return;
-    await api.patch(`/notifications/admin/${edit.id}`, { title: eTitle, body: eBody }).catch(() => undefined);
-    setEdit(null);
-    load();
+    try {
+      await api.patch(`/notifications/admin/${edit.id}`, { title: eTitle, body: eBody });
+      toast.success("Đã cập nhật thông báo.");
+      setEdit(null);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Cập nhật thất bại.");
+    }
   }
 
   const targetLabel = (n: Noti) =>
@@ -107,10 +149,10 @@ export default function AnnouncementsPage() {
             </select>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn-sm" style={{ flex: 1, justifyContent: "center" }} type="button" onClick={() => send(false)}>
-              Gửi thông báo
+            <button className="btn-sm" style={{ flex: 1, justifyContent: "center" }} type="button" disabled={sending} onClick={() => send(false)}>
+              {sending ? "Đang gửi..." : "Gửi thông báo"}
             </button>
-            <button className="fld" style={{ width: "auto", fontWeight: 600, cursor: "pointer" }} type="button" onClick={() => send(true)}>
+            <button className="fld" style={{ width: "auto", fontWeight: 600, cursor: "pointer" }} type="button" disabled={sending} onClick={() => send(true)}>
               Lưu nháp
             </button>
           </div>
@@ -124,6 +166,13 @@ export default function AnnouncementsPage() {
           <div className="atbl-h" style={{ gridTemplateColumns: COLS }}>
             <div>Tiêu đề</div><div>Đối tượng</div><div>Ngày gửi</div><div>Trạng thái</div><div />
           </div>
+          {loadError && (
+            <div className="list-error">
+              <span>{loadError}</span>
+              <button type="button" className="retry" onClick={load}>Thử lại</button>
+            </div>
+          )}
+          {loading && !loadError && [0, 1, 2].map((i) => <div key={i} className="skeleton-row" />)}
           {rows.map((n) => (
             <div key={n.id} className="atbl-r" style={{ gridTemplateColumns: COLS }}>
               <div className="a-nm">{n.title}</div>
@@ -136,14 +185,26 @@ export default function AnnouncementsPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l18-5v12L3 14v-3z" /></svg>
                   </button>
                 )}
-                <button type="button" onClick={() => { setEdit(n); setETitle(n.title); setEBody(n.body); }}>{EditIcon}</button>
-                <button className="del" type="button" onClick={() => del(n.id)}>{DelIcon}</button>
+                {n.status === "DRAFT" && (
+                  <button type="button" title="Sửa" onClick={() => { setEdit(n); setETitle(n.title); setEBody(n.body); }}>{EditIcon}</button>
+                )}
+                <button className="del" type="button" title="Xóa" onClick={() => setDelRow(n)}>{DelIcon}</button>
               </div>
             </div>
           ))}
-          {rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có thông báo.</div>}
+          {!loading && !loadError && rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có thông báo.</div>}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!delRow}
+        title="Xóa thông báo?"
+        message={<>Bạn có chắc muốn xóa <b>{delRow?.title}</b>? Hành động này không thể hoàn tác.</>}
+        confirmLabel="Xóa"
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDelRow(null)}
+      />
 
       <div className={"modal-ov" + (edit ? " open" : "")} onClick={(e) => e.target === e.currentTarget && setEdit(null)}>
         <div className="modal">

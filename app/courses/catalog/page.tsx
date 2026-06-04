@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardShell from "../../components/DashboardShell";
 import { api } from "@/lib/api";
 import { vnd } from "@/lib/format";
@@ -24,8 +24,10 @@ interface CheckoutInfo {
   qrUrl: string;
 }
 
-export default function CatalogPage() {
+function CatalogInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const q = searchParams.get("search") ?? "";
   const [rows, setRows] = useState<CatalogCourse[]>([]);
   const [ownedIds, setOwnedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -36,8 +38,9 @@ export default function CatalogPage() {
   const [msg, setMsg] = useState("");
 
   function load() {
+    setLoading(true);
     Promise.all([
-      api.getFull<CatalogCourse[]>("/courses/catalog", { limit: 50 }),
+      api.getFull<CatalogCourse[]>("/courses/catalog", { limit: 50, search: q || undefined }),
       api.get<{ course: { id: string } }[]>("/my/courses"),
     ])
       .then(([cat, mine]) => {
@@ -47,7 +50,8 @@ export default function CatalogPage() {
       .catch(() => undefined)
       .finally(() => setLoading(false));
   }
-  useEffect(load, []);
+  // tải lại khi từ khóa tìm kiếm thay đổi
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [q]);
 
   async function buy(c: CatalogCourse) {
     setBusy(c.id);
@@ -98,6 +102,15 @@ export default function CatalogPage() {
         <div className="panel" style={{ padding: 14, marginBottom: 16, color: "var(--accent)" }}>{msg}</div>
       )}
       {loading && <div className="panel" style={{ padding: 24 }}>Đang tải...</div>}
+      {!loading && q && (
+        <div className="ct-meta" style={{ marginBottom: 12 }}>
+          Kết quả cho “{q}” · {rows.length} khóa{" "}
+          <button type="button" className="link-btn" onClick={() => router.push("/courses/catalog")}>Xóa lọc</button>
+        </div>
+      )}
+      {!loading && rows.length === 0 && (
+        <div className="panel" style={{ padding: 24 }}>{q ? `Không tìm thấy khóa học khớp “${q}”.` : "Chưa có khóa học."}</div>
+      )}
 
       <div className="cc-grid">
         {rows.map((c) => {
@@ -172,5 +185,13 @@ export default function CatalogPage() {
         )}
       </div>
     </DashboardShell>
+  );
+}
+
+export default function CatalogPage() {
+  return (
+    <Suspense fallback={null}>
+      <CatalogInner />
+    </Suspense>
   );
 }

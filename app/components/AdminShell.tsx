@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getCurrentUser, logout, type AuthUser } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { timeAgo } from "@/lib/format";
 import { AdminIcon, NotifIcon } from "./adminIcons";
 
 const LOGO = "/assets/16f53e33ca.png";
@@ -18,52 +20,12 @@ const NAV_MENU = [
   { label: "Nhật ký hoạt động", href: "/admin/activity", icon: AdminIcon.activity },
 ];
 
-const BELL = [
-  {
-    ic: NotifIcon.cart,
-    color: "blue",
-    body: (
-      <>
-        Đơn hàng mới <b>#INV-2042</b> từ Tuấn Kiệt
-      </>
-    ),
-    time: "5 phút trước",
-    unread: true,
-  },
-  {
-    ic: NotifIcon.userCheck,
-    color: "blue",
-    body: (
-      <>
-        Học viên mới <b>Minh Trang</b> vừa đăng ký
-      </>
-    ),
-    time: "1 giờ trước",
-    unread: true,
-  },
-  {
-    ic: NotifIcon.refund,
-    color: "orange",
-    body: (
-      <>
-        Yêu cầu <b>hoàn tiền</b> từ Đức Anh
-      </>
-    ),
-    time: "3 giờ trước",
-    unread: true,
-  },
-  {
-    ic: NotifIcon.chart,
-    color: "green",
-    body: (
-      <>
-        Doanh thu tháng 6 đạt <b>84.6M</b> 🎉
-      </>
-    ),
-    time: "1 ngày trước",
-    unread: false,
-  },
-];
+interface BellItem {
+  id: string;
+  title: string;
+  isRead: boolean;
+  createdAt: string;
+}
 
 export default function AdminShell({
   title,
@@ -81,19 +43,35 @@ export default function AdminShell({
   const pathname = usePathname();
   const [user, setUser] = useState<AuthUser>({
     id: "",
-    name: "Danmotion",
-    email: "admin@admin.com",
+    name: "Quản trị viên",
+    email: "",
     role: "Quản trị viên",
     roleKey: "admin",
-    initials: "DM",
+    initials: "QT",
   });
   const [openMenu, setOpenMenu] = useState<"user" | "notif" | null>(null);
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [bell, setBell] = useState<BellItem[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [search, setSearch] = useState("");
   const badgeRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
+  function onSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const q = search.trim();
+    if (q) router.push(`/admin/courses?search=${encodeURIComponent(q)}`);
+  }
+
   useEffect(() => {
     setUser(getCurrentUser());
+    api
+      .getFull<BellItem[]>("/notifications/me", { limit: 5 })
+      .then((res) => {
+        setBell(res.data ?? []);
+        setUnread(Number(res.meta?.unreadCount ?? 0));
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -155,10 +133,10 @@ export default function AdminShell({
           {AdminIcon.gear}
           <span>Cài đặt</span>
         </Link>
-        <a className="nav-i" onClick={askLogout}>
+        <button type="button" className="nav-i" onClick={askLogout}>
           {AdminIcon.logout}
           <span>Đăng xuất</span>
-        </a>
+        </button>
         <div className="spacer" />
         <div className="user">
           <div className="ava">{user.initials}</div>
@@ -176,10 +154,16 @@ export default function AdminShell({
             <div className="hi">{subtitle}</div>
           </div>
           <div className="top-act">
-            <div className="search">
+            <form className="search" onSubmit={onSearch}>
               {AdminIcon.search}
-              <input type="text" placeholder="Tìm kiếm..." />
-            </div>
+              <input
+                type="text"
+                placeholder="Tìm khóa học..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Tìm khóa học"
+              />
+            </form>
 
             <div className={"notif" + (openMenu === "notif" ? " open" : "")} ref={notifRef}>
               <button
@@ -191,24 +175,27 @@ export default function AdminShell({
                 }}
               >
                 {AdminIcon.bell}
-                <span className="dot" />
+                {unread > 0 && <span className="dot" />}
               </button>
               <div className="notif-dd">
                 <div className="nd-head">
                   <span className="nd-title">Thông báo</span>
-                  <span className="nd-new">3 mới</span>
+                  <span className="nd-new">{unread} mới</span>
                 </div>
                 <div className="nd-list">
-                  {BELL.map((n, i) => (
+                  {bell.length === 0 && (
+                    <div className="nd-item"><div className="nd-tx"><p>Chưa có thông báo</p></div></div>
+                  )}
+                  {bell.map((n) => (
                     <Link
-                      key={i}
-                      className={"nd-item" + (n.unread ? " unread" : "")}
+                      key={n.id}
+                      className={"nd-item" + (!n.isRead ? " unread" : "")}
                       href="/admin/notifications"
                     >
-                      <span className={"nd-ic " + n.color}>{n.ic}</span>
+                      <span className="nd-ic blue">{NotifIcon.cart}</span>
                       <div className="nd-tx">
-                        <p>{n.body}</p>
-                        <time>{n.time}</time>
+                        <p>{n.title}</p>
+                        <time>{timeAgo(n.createdAt)}</time>
                       </div>
                     </Link>
                   ))}
@@ -238,9 +225,9 @@ export default function AdminShell({
                 <Link href="/admin/settings">Hồ sơ</Link>
                 <Link href="/admin/settings">Cài đặt</Link>
                 <div className="sep" />
-                <a className="danger" onClick={askLogout}>
+                <button type="button" className="danger" onClick={askLogout}>
                   Đăng xuất
-                </a>
+                </button>
               </div>
             </div>
 

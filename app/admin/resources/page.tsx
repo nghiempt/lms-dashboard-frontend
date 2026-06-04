@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import AdminShell from "../../components/AdminShell";
-import { api, API_BASE } from "@/lib/api";
+import ConfirmDialog from "../../components/ConfirmDialog";
+import { useToast } from "../../components/Toast";
+import { api, uploadMedia } from "@/lib/api";
 import { fileSize } from "@/lib/format";
 
 const GRID = "2.4fr 1.3fr 0.9fr 1.3fr 0.8fr 90px";
@@ -24,19 +26,31 @@ const TrashSvg = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
 );
 
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500MB như UI ghi
+
 export default function AdminResourcesPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<DocRow[]>([]);
   const [courses, setCourses] = useState<CourseOpt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<File | null>(null);
   const [name, setName] = useState("");
   const [type, setType] = useState("");
   const [courseId, setCourseId] = useState("");
+  const [delRow, setDelRow] = useState<DocRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function load() {
-    api.getFull<DocRow[]>("/documents/admin", { limit: 100 }).then((r) => setRows(r.data ?? [])).catch(() => undefined);
+    setLoading(true);
+    setLoadError("");
+    api.getFull<DocRow[]>("/documents/admin", { limit: 100 })
+      .then((r) => setRows(r.data ?? []))
+      .catch((e) => setLoadError((e as Error).message || "Không tải được tài liệu."))
+      .finally(() => setLoading(false));
   }
   useEffect(() => {
     load();
@@ -46,6 +60,11 @@ export default function AdminResourcesPage() {
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
+    if (f.size > MAX_UPLOAD_BYTES) {
+      toast.error("File vượt quá 500MB.");
+      e.target.value = "";
+      return;
+    }
     setPicked(f);
     if (!name) setName(f.name);
   }
@@ -58,19 +77,13 @@ export default function AdminResourcesPage() {
       form.append("file", picked);
       form.append("folder", "documents");
       form.append("type", "DOCUMENT");
-      const token = localStorage.getItem("lms_access");
-      const res = await fetch(`${API_BASE}/media/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "x-device-id": localStorage.getItem("lms_device") || "" },
-        body: form,
-      });
-      const j = await res.json();
-      const media = j?.data;
+      const media = await uploadMedia(form); // qua api wrapper: refresh 401 + guard JSON
+      if (!media?.id) throw new Error("Tải file lên thất bại.");
       await api.post("/documents", {
         title: name || picked.name,
         kind: "FILE",
-        mediaId: media?.id,
-        url: media?.url,
+        mediaId: media.id,
+        url: media.url,
         fileType: type || picked.type || "FILE",
         sizeBytes: picked.size,
         courseId: courseId || undefined,
@@ -78,15 +91,28 @@ export default function AdminResourcesPage() {
       });
       setModalOpen(false);
       setPicked(null); setName(""); setType(""); setCourseId("");
+      toast.success("Đã tải lên tài liệu.");
       load();
+    } catch (e) {
+      toast.error((e as Error).message || "Tải lên thất bại.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function del(id: string) {
-    await api.del(`/documents/${id}`).catch(() => undefined);
-    load();
+  async function confirmDelete() {
+    if (!delRow) return;
+    setDeleting(true);
+    try {
+      await api.del(`/documents/${delRow.id}`);
+      toast.success("Đã xóa tài liệu.");
+      setDelRow(null);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Xóa thất bại.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -108,6 +134,13 @@ export default function AdminResourcesPage() {
         <div className="atbl-h" style={{ gridTemplateColumns: GRID }}>
           <div>Tên tài liệu</div><div>Loại</div><div>Dung lượng</div><div>Thuộc khóa</div><div>Lượt tải</div><div />
         </div>
+        {loadError && (
+          <div className="list-error">
+            <span>{loadError}</span>
+            <button type="button" className="retry" onClick={load}>Thử lại</button>
+          </div>
+        )}
+        {loading && !loadError && [0, 1, 2].map((i) => <div key={i} className="skeleton-row" />)}
         {rows.map((row) => (
           <div key={row.id} className="atbl-r" style={{ gridTemplateColumns: GRID }}>
             <div className="a-name"><div className="a-ic"><FileSvg /></div><div className="a-nm">{row.title}</div></div>
@@ -116,12 +149,22 @@ export default function AdminResourcesPage() {
             <div className="a-sub" style={{ fontSize: 13, color: "var(--muted)" }}>{row.course?.title ?? "Tất cả khóa"}</div>
             <div className="a-nm">{row.downloadCount} tải</div>
             <div className="a-act">
-              <button type="button" className="del" onClick={() => del(row.id)}><TrashSvg /></button>
+              <button type="button" className="del" onClick={() => setDelRow(row)}><TrashSvg /></button>
             </div>
           </div>
         ))}
-        {rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có tài liệu.</div>}
+        {!loading && !loadError && rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có tài liệu.</div>}
       </div>
+
+      <ConfirmDialog
+        open={!!delRow}
+        title="Xóa tài liệu?"
+        message={<>Bạn có chắc muốn xóa <b>{delRow?.title}</b>? Hành động này không thể hoàn tác.</>}
+        confirmLabel="Xóa"
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDelRow(null)}
+      />
 
       <div className={"modal-ov" + (modalOpen ? " open" : "")} onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
         <div className="modal modal-form">

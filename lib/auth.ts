@@ -103,17 +103,24 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   return persist(data);
 }
 
+/**
+ * Đăng ký tài khoản mới. BE KHÔNG cấp token cho tới khi email được xác thực,
+ * nên hàm này chỉ trả về thông báo để FE hướng dẫn người dùng kiểm tra email.
+ */
 export async function register(
   fullName: string,
   email: string,
   password: string,
-): Promise<AuthUser> {
-  const data = await api.post<AuthResult>(
+): Promise<string> {
+  const data = await api.post<{ message?: string }>(
     "/auth/register",
     { fullName, email, password, ...device() },
     false,
   );
-  return persist(data);
+  return (
+    data.message ??
+    "Đăng ký thành công. Vui lòng kiểm tra email để xác thực tài khoản."
+  );
 }
 
 export async function googleLogin(idToken: string): Promise<AuthUser> {

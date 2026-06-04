@@ -43,8 +43,15 @@ export default function DashboardShell({
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [bell, setBell] = useState<BellItem[]>([]);
   const [unread, setUnread] = useState(0);
+  const [search, setSearch] = useState("");
   const badgeRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  function onSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const q = search.trim();
+    if (q) router.push(`/courses/catalog?search=${encodeURIComponent(q)}`);
+  }
 
   useEffect(() => {
     setUser(getCurrentUser());
@@ -107,10 +114,10 @@ export default function DashboardShell({
           {Icon.gear}
           <span>Cài đặt</span>
         </Link>
-        <a className="nav-i" onClick={askLogout}>
+        <button type="button" className="nav-i" onClick={askLogout}>
           {Icon.logout}
           <span>Đăng xuất</span>
-        </a>
+        </button>
         <div className="spacer" />
         <div className="user">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -129,10 +136,16 @@ export default function DashboardShell({
             <div className="hi">{subtitle}</div>
           </div>
           <div className="top-act">
-            <div className="search">
+            <form className="search" onSubmit={onSearch}>
               {Icon.search}
-              <input type="text" placeholder="Tìm khóa học, bài giảng..." />
-            </div>
+              <input
+                type="text"
+                placeholder="Tìm khóa học, bài giảng..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Tìm khóa học"
+              />
+            </form>
 
             <div className={"notif" + (openMenu === "notif" ? " open" : "")} ref={notifRef}>
               <button
@@ -201,10 +214,10 @@ export default function DashboardShell({
                   <span>Cài đặt</span>
                 </Link>
                 <div className="sep" />
-                <a className="danger" onClick={askLogout}>
+                <button type="button" className="danger" onClick={askLogout}>
                   {Icon.logoutSm}
                   <span>Đăng xuất</span>
-                </a>
+                </button>
               </div>
             </div>
           </div>

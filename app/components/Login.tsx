@@ -101,6 +101,10 @@ export default function Login() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotBusy, setForgotBusy] = useState(false);
 
   function finishLogin(user: AuthUser) {
     router.replace(HOME_BY_ROLE[user.roleKey]);
@@ -114,6 +118,9 @@ export default function Login() {
     const data = new FormData(e.currentTarget);
     const email = String(data.get("email") || "").trim();
     const password = String(data.get("password") || "");
+    if (!email || !password) {
+      return setError("Vui lòng nhập email và mật khẩu.");
+    }
     setLoading(true);
     try {
       const user = await login(email, password);
@@ -134,12 +141,16 @@ export default function Login() {
     const password = String(data.get("password") || "");
     const confirm = String(data.get("confirm") || "");
     if (name.length < 2) return setError("Vui lòng nhập họ tên.");
+    if (!email) return setError("Vui lòng nhập email.");
     if (password.length < 8) return setError("Mật khẩu tối thiểu 8 ký tự.");
     if (password !== confirm) return setError("Mật khẩu nhập lại không khớp.");
     setLoading(true);
     try {
-      const user = await register(name, email, password);
-      finishLogin(user);
+      const message = await register(name, email, password);
+      // BE chưa cấp token khi email chưa xác thực → chuyển về tab đăng nhập kèm thông báo.
+      setError("");
+      setNotice(message);
+      setTab("login");
     } catch (err) {
       setError((err as Error).message || "Đăng ký thất bại.");
     } finally {
@@ -181,16 +192,24 @@ export default function Login() {
     }
   }
 
-  async function onForgot() {
-    setError("");
-    setNotice("");
-    const email = window.prompt("Nhập email để nhận liên kết đặt lại mật khẩu:");
-    if (!email) return;
+  function openForgot() {
+    setForgotMsg("");
+    setForgotOpen(true);
+  }
+
+  async function submitForgot(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const email = forgotEmail.trim();
+    if (!email) return setForgotMsg("Vui lòng nhập email.");
+    setForgotBusy(true);
+    setForgotMsg("");
     try {
-      const msg = await forgotPassword(email.trim());
-      setNotice(msg);
+      const msg = await forgotPassword(email);
+      setForgotMsg(msg);
     } catch (err) {
-      setError((err as Error).message);
+      setForgotMsg((err as Error).message);
+    } finally {
+      setForgotBusy(false);
     }
   }
 
@@ -256,7 +275,7 @@ export default function Login() {
             <div className="field">
               <label>Email</label>
               <div className="ctrl">
-                <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" defaultValue="student@lms.com" />
+                <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" required />
               </div>
             </div>
             <PasswordField label="Mật khẩu" name="password" placeholder="••••••••" autoComplete="current-password" />
@@ -264,7 +283,7 @@ export default function Login() {
               <label>
                 <input type="checkbox" defaultChecked /> Ghi nhớ đăng nhập
               </label>
-              <a onClick={onForgot} style={{ cursor: "pointer" }}>Quên mật khẩu?</a>
+              <button type="button" className="link-btn" onClick={openForgot}>Quên mật khẩu?</button>
             </div>
             <button className="btn btn-primary" type="submit" disabled={loading}>
               {loading ? "Đang xử lý..." : "Đăng nhập"}
@@ -293,7 +312,7 @@ export default function Login() {
             <div className="field">
               <label>Email</label>
               <div className="ctrl">
-                <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" />
+                <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" required />
               </div>
             </div>
             <PasswordField label="Mật khẩu" name="password" placeholder="Tối thiểu 8 ký tự" autoComplete="new-password" />
@@ -318,6 +337,46 @@ export default function Login() {
           </form>
         </div>
       </main>
+
+      {/* Forgot-password modal */}
+      <div
+        className={"modal-ov" + (forgotOpen ? " open" : "")}
+        onClick={(e) => e.target === e.currentTarget && setForgotOpen(false)}
+      >
+        <div className="modal">
+          <div className="panel-h" style={{ marginBottom: 14 }}>
+            <h3>Quên mật khẩu</h3>
+            <button type="button" className="icon-btn" aria-label="Đóng" onClick={() => setForgotOpen(false)}>✕</button>
+          </div>
+          <p className="sub" style={{ marginBottom: 12 }}>
+            Nhập email tài khoản, chúng tôi sẽ gửi liên kết đặt lại mật khẩu.
+          </p>
+          <form onSubmit={submitForgot}>
+            <div className="field">
+              <label>Email</label>
+              <div className="ctrl">
+                <input
+                  type="email"
+                  placeholder="ban@email.com"
+                  autoComplete="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            {forgotMsg && (
+              <p className="auth-error" style={{ background: "#e8f6ee", color: "#1a7f46", marginTop: 10 }}>{forgotMsg}</p>
+            )}
+            <div className="modal-act" style={{ marginTop: 16 }}>
+              <button type="button" className="btn-sec" onClick={() => setForgotOpen(false)}>Đóng</button>
+              <button type="submit" className="btn btn-primary" style={{ width: "auto" }} disabled={forgotBusy}>
+                {forgotBusy ? "Đang gửi..." : "Gửi liên kết"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }
