@@ -1,46 +1,78 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { vnd } from "@/lib/format";
 import { Icon } from "./dashboardIcons";
 import DashboardShell from "./DashboardShell";
 
-const STATS = [
-  { ic: Icon.bag, val: "2", lbl: "Khóa học đã mua" },
-  { ic: Icon.clock, val: "48.5h", lbl: "Tổng giờ học" },
-  { ic: Icon.eye, val: "86", lbl: "Video đã xem" },
-  { ic: Icon.list, val: "42", lbl: "Video còn lại" },
-  { ic: Icon.share, val: "67%", lbl: "Tỷ lệ hoàn thành" },
-];
+interface DashboardData {
+  coursesBought: number;
+  totalHours: number;
+  videosWatched: number;
+  videosRemaining: number;
+  completionRate: number;
+  courses: {
+    id: string;
+    title: string;
+    shortCode: string | null;
+    progressPct: number;
+    status: string;
+    price: string;
+  }[];
+}
+interface StudyStats {
+  totalHours: number;
+  data: { date: string; hours: number }[];
+}
 
-const BARS = [
-  { v: "2.5h", h: 61, d: "T2" },
-  { v: "1.8h", h: 44, d: "T3" },
-  { v: "3.2h", h: 78, d: "T4" },
-  { v: "0.9h", h: 22, d: "T5" },
-  { v: "4.1h", h: 100, d: "T6", peak: true },
-  { v: "2.7h", h: 66, d: "T7" },
-  { v: "3.5h", h: 85, d: "CN" },
-];
+const STATUS_LABEL: Record<string, { cls: string; label: string }> = {
+  LEARNING: { cls: "learning", label: "Đang học" },
+  COMPLETED: { cls: "done", label: "Hoàn thành" },
+  EXPIRED: { cls: "refund", label: "Hết hạn" },
+};
 
-const COURSES = [
-  { code: "KP", name: "Khóa Premium", meta: "6 chương · 27 bài", pct: 62, price: "5.890.000", status: "learning", statusLabel: "Đang học" },
-  { code: "PE", name: "Khóa Premium Elite", meta: "9 chương · 37 bài", pct: 18, price: "10.890.000", status: "learning", statusLabel: "Đang học" },
-];
-
-const DONUT_PCT = 67;
+function weekday(iso: string): string {
+  const d = new Date(iso).getDay();
+  return d === 0 ? "CN" : "T" + (d + 1);
+}
 
 export default function Dashboard() {
-  const [name, setName] = useState("Tuấn Kiệt");
+  const router = useRouter();
+  const [name, setName] = useState("bạn");
   const [mounted, setMounted] = useState(false);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [stats, setStats] = useState<StudyStats | null>(null);
 
   useEffect(() => {
     setName(getCurrentUser().name);
     const id = requestAnimationFrame(() => setMounted(true));
+    api.get<DashboardData>("/my/dashboard").then(setData).catch(() => undefined);
+    api.get<StudyStats>("/my/study-stats", { days: 7 }).then(setStats).catch(() => undefined);
     return () => cancelAnimationFrame(id);
   }, []);
 
   const C = 2 * Math.PI * 70;
+  const donutPct = data?.completionRate ?? 0;
+  const totalVideos = (data?.videosWatched ?? 0) + (data?.videosRemaining ?? 0);
+
+  const maxHours = Math.max(0.01, ...(stats?.data ?? []).map((b) => b.hours));
+  const bars = (stats?.data ?? []).map((b) => ({
+    v: `${b.hours}h`,
+    h: Math.round((b.hours / maxHours) * 100),
+    d: weekday(b.date),
+    peak: b.hours === maxHours && b.hours > 0,
+  }));
+
+  const STATS = [
+    { ic: Icon.bag, val: String(data?.coursesBought ?? 0), lbl: "Khóa học đã mua" },
+    { ic: Icon.clock, val: `${data?.totalHours ?? 0}h`, lbl: "Tổng giờ học" },
+    { ic: Icon.eye, val: String(data?.videosWatched ?? 0), lbl: "Video đã xem" },
+    { ic: Icon.list, val: String(data?.videosRemaining ?? 0), lbl: "Video còn lại" },
+    { ic: Icon.share, val: `${donutPct}%`, lbl: "Tỷ lệ hoàn thành" },
+  ];
 
   return (
     <DashboardShell title={<>Chào, {name} 👋</>} subtitle="Hôm nay học gì nào? Tiếp tục lộ trình của bạn.">
@@ -58,11 +90,11 @@ export default function Dashboard() {
         <div className="panel">
           <div className="panel-h">
             <h3>Giờ học 7 ngày qua</h3>
-            <span className="sub">Tổng 18.7 giờ</span>
+            <span className="sub">Tổng {stats?.totalHours ?? 0} giờ</span>
           </div>
           <div className="bars">
-            {BARS.map((b) => (
-              <div key={b.d} className={"bar" + (b.peak ? " peak" : "")}>
+            {bars.map((b, i) => (
+              <div key={i} className={"bar" + (b.peak ? " peak" : "")}>
                 <span className="v">{b.v}</span>
                 <div className="col" style={{ height: mounted ? `${b.h}%` : 0 }} />
                 <span className="d">{b.d}</span>
@@ -83,15 +115,17 @@ export default function Dashboard() {
                   cx="85"
                   cy="85"
                   r="70"
-                  style={{ strokeDasharray: C, strokeDashoffset: mounted ? C * (1 - DONUT_PCT / 100) : C }}
+                  style={{ strokeDasharray: C, strokeDashoffset: mounted ? C * (1 - donutPct / 100) : C }}
                 />
               </svg>
               <div className="ctr">
-                <b>{DONUT_PCT}%</b>
+                <b>{donutPct}%</b>
                 <span>hoàn thành</span>
               </div>
             </div>
-            <div className="donut-foot">86/128 video đã xem trên toàn bộ khóa</div>
+            <div className="donut-foot">
+              {data?.videosWatched ?? 0}/{totalVideos} video đã xem trên toàn bộ khóa
+            </div>
           </div>
         </div>
       </div>
@@ -99,7 +133,7 @@ export default function Dashboard() {
       <div className="panel">
         <div className="panel-h">
           <h3>Khóa học của tôi</h3>
-          <span className="sub">2 khóa</span>
+          <span className="sub">{data?.courses.length ?? 0} khóa</span>
         </div>
         <div className="ctable">
           <div className="ct-head">
@@ -109,33 +143,43 @@ export default function Dashboard() {
             <div>Trạng thái</div>
             <div />
           </div>
-          {COURSES.map((c) => (
-            <div key={c.code} className="ct-row">
-              <div className="ct-course">
-                <div className="ct-thumb">{c.code}</div>
-                <div style={{ minWidth: 0 }}>
-                  <div className="ct-nm">{c.name}</div>
-                  <div className="ct-meta">{c.meta}</div>
+          {(data?.courses ?? []).map((c) => {
+            const st = STATUS_LABEL[c.status] ?? STATUS_LABEL.LEARNING;
+            return (
+              <div key={c.id} className="ct-row">
+                <div className="ct-course">
+                  <div className="ct-thumb">{c.shortCode ?? c.title.slice(0, 2).toUpperCase()}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="ct-nm">{c.title}</div>
+                    <div className="ct-meta">&nbsp;</div>
+                  </div>
                 </div>
-              </div>
-              <div className="prog">
-                <div className="track">
-                  <div className="fill" style={{ width: `${c.pct}%` }} />
+                <div className="prog">
+                  <div className="track">
+                    <div className="fill" style={{ width: `${c.progressPct}%` }} />
+                  </div>
+                  <span className="pct">{c.progressPct}%</span>
                 </div>
-                <span className="pct">{c.pct}%</span>
+                <div className="price">
+                  {vnd(c.price)}
+                  <span style={{ fontSize: 11, color: "var(--muted-2)", fontWeight: 400 }}>đ</span>
+                </div>
+                <div>
+                  <span className={"badge " + st.cls}>{st.label}</span>
+                </div>
+                <button className="ct-act" type="button" onClick={() => router.push(`/courses/${c.id}`)}>
+                  Tiếp tục
+                </button>
               </div>
-              <div className="price">
-                {c.price}
-                <span style={{ fontSize: 11, color: "var(--muted-2)", fontWeight: 400 }}>đ</span>
+            );
+          })}
+          {data && data.courses.length === 0 && (
+            <div className="ct-row">
+              <div className="ct-meta" style={{ padding: 12 }}>
+                Bạn chưa mua khóa nào. <a href="/courses">Khám phá khóa học →</a>
               </div>
-              <div>
-                <span className={"badge " + c.status}>{c.statusLabel}</span>
-              </div>
-              <button className="ct-act" type="button">
-                Tiếp tục
-              </button>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </DashboardShell>

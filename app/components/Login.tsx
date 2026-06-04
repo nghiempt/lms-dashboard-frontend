@@ -2,9 +2,17 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { HOME_BY_ROLE, setSession, verifyCredentials, type AuthUser } from "@/lib/auth";
+import {
+  forgotPassword,
+  googleLogin,
+  HOME_BY_ROLE,
+  login,
+  register,
+  type AuthUser,
+} from "@/lib/auth";
 
 const LOGO = "/assets/16f53e33ca.png";
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 /* ---------- inline icons (ported 1:1) ---------- */
 const TickIcon = () => (
@@ -71,48 +79,119 @@ function PasswordField({
   );
 }
 
+/* ---------- Google Identity Services loader ---------- */
+type GoogleCredential = { credential: string };
+function loadGoogle(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") return reject();
+    const w = window as unknown as { google?: unknown };
+    if (w.google) return resolve();
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject();
+    document.head.appendChild(s);
+  });
+}
+
 export default function Login() {
   const router = useRouter();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
 
   function finishLogin(user: AuthUser) {
-    setSession(user);
     router.replace(HOME_BY_ROLE[user.roleKey]);
     router.refresh();
   }
 
-  function onLogin(e: FormEvent<HTMLFormElement>) {
+  async function onLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+    setNotice("");
     const data = new FormData(e.currentTarget);
-    const email = String(data.get("email") || "");
+    const email = String(data.get("email") || "").trim();
     const password = String(data.get("password") || "");
-    const user = verifyCredentials(email, password);
-    if (!user) {
-      setError(
-        "Email hoặc mật khẩu không đúng. Thử admin@admin.com / admin hoặc student@student.com / student."
-      );
-      return;
+    setLoading(true);
+    try {
+      const user = await login(email, password);
+      finishLogin(user);
+    } catch (err) {
+      setError((err as Error).message || "Đăng nhập thất bại.");
+    } finally {
+      setLoading(false);
     }
-    finishLogin(user);
   }
 
-  function onRegister(e: FormEvent<HTMLFormElement>) {
+  async function onRegister(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
     const data = new FormData(e.currentTarget);
-    const name = String(data.get("name") || "").trim() || "Học viên mới";
+    const name = String(data.get("name") || "").trim();
     const email = String(data.get("email") || "").trim();
-    const initials =
-      name
-        .split(" ")
-        .map((w) => w[0])
-        .slice(-2)
-        .join("")
-        .toUpperCase() || "HV";
-    // Fake: tạo phiên ngay sau khi đăng ký (mặc định vai trò học viên).
-    finishLogin({ name, email, role: "Học viên", roleKey: "student", initials });
+    const password = String(data.get("password") || "");
+    const confirm = String(data.get("confirm") || "");
+    if (name.length < 2) return setError("Vui lòng nhập họ tên.");
+    if (password.length < 8) return setError("Mật khẩu tối thiểu 8 ký tự.");
+    if (password !== confirm) return setError("Mật khẩu nhập lại không khớp.");
+    setLoading(true);
+    try {
+      const user = await register(name, email, password);
+      finishLogin(user);
+    } catch (err) {
+      setError((err as Error).message || "Đăng ký thất bại.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onGoogle() {
+    setError("");
+    if (!GOOGLE_CLIENT_ID) {
+      setError("Đăng nhập Google chưa được cấu hình (thiếu NEXT_PUBLIC_GOOGLE_CLIENT_ID).");
+      return;
+    }
+    try {
+      await loadGoogle();
+      const g = (
+        window as unknown as {
+          google: {
+            accounts: {
+              id: { initialize: (o: unknown) => void; prompt: () => void };
+            };
+          };
+        }
+      ).google;
+      g.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (resp: GoogleCredential) => {
+          try {
+            const user = await googleLogin(resp.credential);
+            finishLogin(user);
+          } catch (err) {
+            setError((err as Error).message || "Đăng nhập Google thất bại.");
+          }
+        },
+      });
+      g.accounts.id.prompt();
+    } catch {
+      setError("Không tải được Google Sign-In.");
+    }
+  }
+
+  async function onForgot() {
+    setError("");
+    setNotice("");
+    const email = window.prompt("Nhập email để nhận liên kết đặt lại mật khẩu:");
+    if (!email) return;
+    try {
+      const msg = await forgotPassword(email.trim());
+      setNotice(msg);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
 
   return (
@@ -132,22 +211,13 @@ export default function Login() {
           <p>Đăng nhập để truy cập khóa học, theo dõi tiến độ và nhận hỗ trợ 1:1 từ Danmotion.</p>
           <ul className="side-feats">
             <li>
-              <span className="tick">
-                <TickIcon />
-              </span>{" "}
-              Truy cập trọn đời các bài giảng
+              <span className="tick"><TickIcon /></span> Truy cập trọn đời các bài giảng
             </li>
             <li>
-              <span className="tick">
-                <TickIcon />
-              </span>{" "}
-              Theo dõi tiến độ từng chương
+              <span className="tick"><TickIcon /></span> Theo dõi tiến độ từng chương
             </li>
             <li>
-              <span className="tick">
-                <TickIcon />
-              </span>{" "}
-              Kho tài nguyên + cộng đồng editor
+              <span className="tick"><TickIcon /></span> Kho tài nguyên + cộng đồng editor
             </li>
           </ul>
         </div>
@@ -167,10 +237,10 @@ export default function Login() {
           </div>
           <div className="tabs" data-active={tab}>
             <div className="tab-thumb" />
-            <button type="button" className={tab === "login" ? "active" : ""} onClick={() => setTab("login")}>
+            <button type="button" className={tab === "login" ? "active" : ""} onClick={() => { setTab("login"); setError(""); }}>
               Đăng nhập
             </button>
-            <button type="button" className={tab === "register" ? "active" : ""} onClick={() => setTab("register")}>
+            <button type="button" className={tab === "register" ? "active" : ""} onClick={() => { setTab("register"); setError(""); }}>
               Đăng ký
             </button>
           </div>
@@ -180,10 +250,13 @@ export default function Login() {
             <h1>Đăng nhập</h1>
             <p className="sub">Chào mừng trở lại! Nhập thông tin để tiếp tục học.</p>
             {error && tab === "login" && <p className="auth-error">{error}</p>}
+            {notice && tab === "login" && (
+              <p className="auth-error" style={{ background: "#e8f6ee", color: "#1a7f46" }}>{notice}</p>
+            )}
             <div className="field">
               <label>Email</label>
               <div className="ctrl">
-                <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" defaultValue="admin@admin.com" />
+                <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" defaultValue="student@lms.com" />
               </div>
             </div>
             <PasswordField label="Mật khẩu" name="password" placeholder="••••••••" autoComplete="current-password" />
@@ -191,27 +264,18 @@ export default function Login() {
               <label>
                 <input type="checkbox" defaultChecked /> Ghi nhớ đăng nhập
               </label>
-              <a href="#">Quên mật khẩu?</a>
+              <a onClick={onForgot} style={{ cursor: "pointer" }}>Quên mật khẩu?</a>
             </div>
-            <button className="btn btn-primary" type="submit">
-              Đăng nhập
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {loading ? "Đang xử lý..." : "Đăng nhập"}
             </button>
-            <p
-              className="sub"
-              style={{ marginTop: 14, fontSize: 12.5, textAlign: "center", lineHeight: 1.7 }}
-            >
-              Demo · Admin: <b>admin@admin.com</b> / admin
-              <br />
-              Học viên: <b>student@student.com</b> / student
-            </p>
             <div className="divider">hoặc</div>
-            <button className="btn btn-google" type="button">
+            <button className="btn btn-google" type="button" onClick={onGoogle}>
               <GoogleIcon />
               Tiếp tục với Google
             </button>
             <p className="swap">
-              Chưa có tài khoản?{" "}
-              <a onClick={() => setTab("register")}>Đăng ký ngay</a>
+              Chưa có tài khoản? <a onClick={() => setTab("register")}>Đăng ký ngay</a>
             </p>
           </form>
 
@@ -219,6 +283,7 @@ export default function Login() {
           <form className={"pane" + (tab === "register" ? " show" : "")} onSubmit={onRegister}>
             <h1>Tạo tài khoản</h1>
             <p className="sub">Bắt đầu hành trình trở thành Video Editor quốc tế.</p>
+            {error && tab === "register" && <p className="auth-error">{error}</p>}
             <div className="field">
               <label>Họ và tên</label>
               <div className="ctrl">
@@ -231,21 +296,19 @@ export default function Login() {
                 <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" />
               </div>
             </div>
-            <PasswordField label="Mật khẩu" placeholder="Tối thiểu 8 ký tự" autoComplete="new-password" />
-            <PasswordField label="Nhập lại mật khẩu" placeholder="••••••••" autoComplete="new-password" />
+            <PasswordField label="Mật khẩu" name="password" placeholder="Tối thiểu 8 ký tự" autoComplete="new-password" />
+            <PasswordField label="Nhập lại mật khẩu" name="confirm" placeholder="••••••••" autoComplete="new-password" />
             <div className="row">
               <label>
-                <input type="checkbox" /> Tôi đồng ý với{" "}
-                <a href="#" style={{ marginLeft: 4 }}>
-                  điều khoản
-                </a>
+                <input type="checkbox" defaultChecked /> Tôi đồng ý với{" "}
+                <a href="#" style={{ marginLeft: 4 }}>điều khoản</a>
               </label>
             </div>
-            <button className="btn btn-primary" type="submit">
-              Tạo tài khoản
+            <button className="btn btn-primary" type="submit" disabled={loading}>
+              {loading ? "Đang xử lý..." : "Tạo tài khoản"}
             </button>
             <div className="divider">hoặc</div>
-            <button className="btn btn-google" type="button">
+            <button className="btn btn-google" type="button" onClick={onGoogle}>
               <GoogleIcon />
               Tiếp tục với Google
             </button>

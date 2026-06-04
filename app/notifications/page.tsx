@@ -1,52 +1,83 @@
-import type { Metadata } from "next";
-import { NbBook, NbChat, NbTag, NbCheck, NbCard } from "../components/dashboardIcons";
+"use client";
+
+import { useEffect, useState } from "react";
+import { NbBook, NbCard, NbCheck, NbTag } from "../components/dashboardIcons";
 import DashboardShell from "../components/DashboardShell";
+import { api } from "@/lib/api";
+import { timeAgo } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Thông báo — VIDEO EDITOR" };
+interface Noti {
+  id: string;
+  title: string;
+  body: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+}
 
-const TODAY = [
-  { ic: NbBook, color: "blue", body: (<>Bài giảng mới <b>Pacing &amp; nhịp cắt</b> vừa được thêm vào Khóa Premium Elite</>), time: "10 phút trước" },
-  { ic: NbChat, color: "blue", body: (<><b>Dân</b> đã trả lời feedback bài tập của bạn</>), time: "2 giờ trước" },
-];
+const ICON_BY_TYPE: Record<string, { ic: React.ReactNode; color: string }> = {
+  COURSE: { ic: NbBook, color: "blue" },
+  PROMOTION: { ic: NbTag, color: "orange" },
+  PAYMENT: { ic: NbCard, color: "green" },
+  SYSTEM: { ic: NbCheck, color: "green" },
+  COMMUNITY: { ic: NbBook, color: "blue" },
+};
 
-const EARLIER = [
-  { ic: NbTag, color: "orange", body: <>Ưu đãi đặc biệt: giảm 20% khi nâng cấp lên Premium Elite</>, time: "1 ngày trước" },
-  { ic: NbCheck, color: "green", body: (<>Chúc mừng! Bạn đã hoàn thành chương <b>Apple Style</b> 🎉</>), time: "2 ngày trước" },
-  { ic: NbCard, color: "green", body: (<>Hóa đơn <b>#INV-1987</b> đã thanh toán thành công</>), time: "3 ngày trước" },
-  { ic: NbBook, color: "blue", body: <>Chào mừng bạn đến với VIDEO EDITOR! Bắt đầu lộ trình ngay.</>, time: "5 ngày trước" },
-];
+function isToday(iso: string): boolean {
+  const d = new Date(iso);
+  const n = new Date();
+  return d.toDateString() === n.toDateString();
+}
 
 export default function NotificationsPage() {
+  const [items, setItems] = useState<Noti[]>([]);
+
+  function load() {
+    api.getFull<Noti[]>("/notifications/me", { limit: 50 }).then((r) => setItems(r.data ?? [])).catch(() => undefined);
+  }
+  useEffect(load, []);
+
+  async function markRead(id: string) {
+    await api.patch(`/notifications/me/${id}/read`).catch(() => undefined);
+    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+  }
+  async function markAll() {
+    await api.patch("/notifications/me/read-all").catch(() => undefined);
+    setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  }
+
+  const today = items.filter((n) => isToday(n.createdAt));
+  const earlier = items.filter((n) => !isToday(n.createdAt));
+
+  const Row = (n: Noti) => {
+    const meta = ICON_BY_TYPE[n.type] ?? ICON_BY_TYPE.SYSTEM;
+    return (
+      <a key={n.id} className={"nf-item" + (!n.isRead ? " unread" : "")} onClick={() => !n.isRead && markRead(n.id)} style={{ cursor: "pointer" }}>
+        <span className={"nd-ic " + meta.color}>{meta.ic}</span>
+        <div className="nd-tx">
+          <p><b>{n.title}</b> — {n.body}</p>
+          <time>{timeAgo(n.createdAt)}</time>
+        </div>
+        {!n.isRead && <span className="nf-dot" />}
+      </a>
+    );
+  };
+
   return (
     <DashboardShell title="Thông báo" subtitle="Tất cả thông báo & cập nhật của bạn.">
       <div className="panel" style={{ padding: 0 }}>
         <div className="panel-h" style={{ margin: 0, padding: "18px 22px", borderBottom: "1px solid var(--line)" }}>
           <h3>Tất cả thông báo</h3>
-          <a className="ct-act">Đánh dấu tất cả đã đọc</a>
+          <a className="ct-act" onClick={markAll} style={{ cursor: "pointer" }}>Đánh dấu tất cả đã đọc</a>
         </div>
 
-        <div className="nf-sec">Hôm nay</div>
-        {TODAY.map((n, i) => (
-          <a key={i} className="nf-item unread">
-            <span className={"nd-ic " + n.color}>{n.ic}</span>
-            <div className="nd-tx">
-              <p>{n.body}</p>
-              <time>{n.time}</time>
-            </div>
-            <span className="nf-dot" />
-          </a>
-        ))}
+        {today.length > 0 && <div className="nf-sec">Hôm nay</div>}
+        {today.map(Row)}
 
-        <div className="nf-sec">Trước đó</div>
-        {EARLIER.map((n, i) => (
-          <a key={i} className="nf-item">
-            <span className={"nd-ic " + n.color}>{n.ic}</span>
-            <div className="nd-tx">
-              <p>{n.body}</p>
-              <time>{n.time}</time>
-            </div>
-          </a>
-        ))}
+        {earlier.length > 0 && <div className="nf-sec">Trước đó</div>}
+        {earlier.map(Row)}
+
+        {items.length === 0 && <div className="ct-meta" style={{ padding: 22 }}>Chưa có thông báo nào.</div>}
       </div>
     </DashboardShell>
   );

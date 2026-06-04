@@ -1,53 +1,114 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import DashboardShell from "../components/DashboardShell";
+import { api } from "@/lib/api";
+import { vnd } from "@/lib/format";
 
-const COURSES = [
-  { tag: "KP", cover: "Devin Jatho", price: "5.890.000đ", name: "Khóa Premium", meta: "6 chương · 27 bài", pct: 62 },
-  { tag: "PE", cover: "Premium Elite", price: "10.890.000đ", name: "Khóa Premium Elite", meta: "9 chương · 37 bài", pct: 18 },
-];
+interface MyCourse {
+  id: string;
+  status: string;
+  progressPct: number;
+  course: {
+    id: string;
+    title: string;
+    shortCode: string | null;
+    coverLabel: string | null;
+    price: string;
+    chapterCount: number;
+    lessonCount: number;
+  };
+}
 
-const FILTERS = ["Tất cả (2)", "Đang học (2)"];
+const STATUS = {
+  LEARNING: { cls: "learning", label: "Đang học" },
+  COMPLETED: { cls: "done", label: "Hoàn thành" },
+  EXPIRED: { cls: "refund", label: "Hết hạn" },
+} as Record<string, { cls: string; label: string }>;
 
 export default function CoursesPage() {
+  const router = useRouter();
+  const [rows, setRows] = useState<MyCourse[]>([]);
   const [filter, setFilter] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get<MyCourse[]>("/my/courses")
+      .then(setRows)
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const learningCount = useMemo(
+    () => rows.filter((r) => r.status === "LEARNING").length,
+    [rows],
+  );
+  const FILTERS = [`Tất cả (${rows.length})`, `Đang học (${learningCount})`];
+  const visible = filter === 1 ? rows.filter((r) => r.status === "LEARNING") : rows;
 
   return (
-    <DashboardShell title="Khóa học của tôi" subtitle="Quản lý và tiếp tục các khóa học bạn đã đăng ký.">
-      <div className="filt">
-        {FILTERS.map((f, i) => (
-          <button key={f} className={i === filter ? "on" : ""} onClick={() => setFilter(i)}>
-            {f}
-          </button>
-        ))}
+    <DashboardShell
+      title="Khóa học của tôi"
+      subtitle="Quản lý và tiếp tục các khóa học bạn đã đăng ký."
+    >
+      <div className="filt" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          {FILTERS.map((f, i) => (
+            <button key={f} className={i === filter ? "on" : ""} onClick={() => setFilter(i)}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <Link className="btn" href="/courses/catalog">+ Khám phá khóa học</Link>
       </div>
+
+      {loading && <div className="panel" style={{ padding: 24 }}>Đang tải...</div>}
+
+      {!loading && visible.length === 0 && (
+        <div className="panel" style={{ padding: 24 }}>
+          Bạn chưa có khóa học nào. <Link href="/courses/catalog">Khám phá khóa học →</Link>
+        </div>
+      )}
+
       <div className="cc-grid">
-        {COURSES.map((c) => (
-          <div key={c.tag} className="panel cc-card">
-            <div className="cc-cover">
-              <span className="cc-tag">{c.tag}</span>
-              <span className="cc-cover-l">{c.cover}</span>
-            </div>
-            <div className="cc-body">
-              <div className="cc-top">
-                <span className="badge learning">Đang học</span>
-                <span className="cc-price">{c.price}</span>
+        {visible.map((r) => {
+          const st = STATUS[r.status] ?? STATUS.LEARNING;
+          return (
+            <div key={r.id} className="panel cc-card">
+              <div className="cc-cover">
+                <span className="cc-tag">{r.course.shortCode ?? "KH"}</span>
+                <span className="cc-cover-l">{r.course.coverLabel ?? r.course.title}</span>
               </div>
-              <div className="cc-nm">{c.name}</div>
-              <div className="ct-meta">{c.meta}</div>
-              <div className="prog" style={{ marginTop: 16 }}>
-                <div className="track">
-                  <div className="fill" style={{ width: `${c.pct}%` }} />
+              <div className="cc-body">
+                <div className="cc-top">
+                  <span className={"badge " + st.cls}>{st.label}</span>
+                  <span className="cc-price">{vnd(r.course.price)}đ</span>
                 </div>
-                <span className="pct">{c.pct}%</span>
+                <div className="cc-nm">{r.course.title}</div>
+                <div className="ct-meta">
+                  {r.course.chapterCount} chương · {r.course.lessonCount} bài
+                </div>
+                <div className="prog" style={{ marginTop: 16 }}>
+                  <div className="track">
+                    <div className="fill" style={{ width: `${r.progressPct}%` }} />
+                  </div>
+                  <span className="pct">{r.progressPct}%</span>
+                </div>
+                <button
+                  className="btn"
+                  type="button"
+                  style={{ width: "100%", justifyContent: "center", marginTop: 18 }}
+                  onClick={() => router.push(`/courses/${r.course.id}`)}
+                >
+                  Tiếp tục học
+                </button>
               </div>
-              <button className="btn" type="button" style={{ width: "100%", justifyContent: "center", marginTop: 18 }}>
-                Tiếp tục học
-              </button>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </DashboardShell>
   );

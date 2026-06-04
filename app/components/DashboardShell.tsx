@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearSession, getCurrentUser, type AuthUser } from "@/lib/auth";
-import { Icon, NbBook, NbChat, NbTag, NbCheck } from "./dashboardIcons";
+import { getCurrentUser, logout, type AuthUser } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { timeAgo } from "@/lib/format";
+import { Icon, NbBook } from "./dashboardIcons";
 
 const LOGO = "/assets/16f53e33ca.png";
 const AVATAR = "/assets/avatar.jpg";
@@ -17,12 +19,13 @@ const NAV_MENU = [
   { label: "Cộng đồng", href: "/community", icon: Icon.users },
 ];
 
-const BELL = [
-  { ic: NbBook, color: "blue", body: (<>Bài giảng mới <b>Pacing &amp; nhịp cắt</b> trong Khóa Premium Elite</>), time: "10 phút trước", unread: true },
-  { ic: NbChat, color: "blue", body: (<><b>Dân</b> đã trả lời feedback của bạn</>), time: "2 giờ trước", unread: true },
-  { ic: NbTag, color: "orange", body: <>Ưu đãi: giảm 20% nâng cấp lên Elite</>, time: "1 ngày trước", unread: false },
-  { ic: NbCheck, color: "green", body: (<>Hoàn thành chương <b>Apple Style</b> 🎉</>), time: "2 ngày trước", unread: false },
-];
+interface BellItem {
+  id: string;
+  title: string;
+  body: string;
+  isRead: boolean;
+  createdAt: string;
+}
 
 export default function DashboardShell({
   title,
@@ -35,14 +38,23 @@ export default function DashboardShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<AuthUser>({ name: "Tuấn Kiệt", email: "student@student.com", role: "Học viên", roleKey: "student", initials: "TK" });
+  const [user, setUser] = useState<AuthUser>({ id: "", name: "Học viên", email: "", role: "Học viên", roleKey: "student", initials: "HV" });
   const [openMenu, setOpenMenu] = useState<"user" | "notif" | null>(null);
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [bell, setBell] = useState<BellItem[]>([]);
+  const [unread, setUnread] = useState(0);
   const badgeRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setUser(getCurrentUser());
+    api
+      .getFull<BellItem[]>("/notifications/me", { limit: 5 })
+      .then((res) => {
+        setBell(res.data ?? []);
+        setUnread(Number(res.meta?.unreadCount ?? 0));
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -68,9 +80,10 @@ export default function DashboardShell({
     setLogoutOpen(true);
   }
   function confirmLogout() {
-    clearSession();
-    router.replace("/login");
-    router.refresh();
+    void logout().finally(() => {
+      router.replace("/login");
+      router.refresh();
+    });
   }
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -101,7 +114,7 @@ export default function DashboardShell({
         <div className="spacer" />
         <div className="user">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="ava" src={AVATAR} alt={user.name} />
+          <img className="ava" src={user.avatarUrl || AVATAR} alt={user.name} />
           <div style={{ minWidth: 0 }}>
             <div className="nm">{user.name}</div>
             <div className="em">{user.email}</div>
@@ -131,20 +144,23 @@ export default function DashboardShell({
                 }}
               >
                 {Icon.bell}
-                <span className="dot" />
+                {unread > 0 && <span className="dot" />}
               </button>
               <div className="notif-dd">
                 <div className="nd-head">
                   <span className="nd-title">Thông báo</span>
-                  <span className="nd-new">2 mới</span>
+                  <span className="nd-new">{unread} mới</span>
                 </div>
                 <div className="nd-list">
-                  {BELL.map((n, i) => (
-                    <Link key={i} className={"nd-item" + (n.unread ? " unread" : "")} href="/notifications">
-                      <span className={"nd-ic " + n.color}>{n.ic}</span>
+                  {bell.length === 0 && (
+                    <div className="nd-item"><div className="nd-tx"><p>Chưa có thông báo</p></div></div>
+                  )}
+                  {bell.map((n) => (
+                    <Link key={n.id} className={"nd-item" + (!n.isRead ? " unread" : "")} href="/notifications">
+                      <span className="nd-ic blue">{NbBook}</span>
                       <div className="nd-tx">
-                        <p>{n.body}</p>
-                        <time>{n.time}</time>
+                        <p>{n.title}</p>
+                        <time>{timeAgo(n.createdAt)}</time>
                       </div>
                     </Link>
                   ))}
@@ -164,7 +180,7 @@ export default function DashboardShell({
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="ava" src={AVATAR} alt={user.name} />
+                <img className="ava" src={user.avatarUrl || AVATAR} alt={user.name} />
                 <div className="ub-info">
                   <span className="nm">{user.name}</span>
                   <span className="rl">{user.role}</span>

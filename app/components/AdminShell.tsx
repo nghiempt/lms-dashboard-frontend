@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearSession, getCurrentUser, type AuthUser } from "@/lib/auth";
+import { getCurrentUser, logout, type AuthUser } from "@/lib/auth";
 import { AdminIcon, NotifIcon } from "./adminIcons";
 
 const LOGO = "/assets/16f53e33ca.png";
@@ -80,6 +80,7 @@ export default function AdminShell({
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<AuthUser>({
+    id: "",
     name: "Danmotion",
     email: "admin@admin.com",
     role: "Quản trị viên",
@@ -118,9 +119,10 @@ export default function AdminShell({
     setLogoutOpen(true);
   }
   function confirmLogout() {
-    clearSession();
-    router.replace("/login");
-    router.refresh();
+    void logout().finally(() => {
+      router.replace("/login");
+      router.refresh();
+    });
   }
 
   const isActive = (href: string) =>

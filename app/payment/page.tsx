@@ -1,21 +1,48 @@
-import type { Metadata } from "next";
+"use client";
+
+import { useEffect, useState } from "react";
 import { Icon } from "../components/dashboardIcons";
 import DashboardShell from "../components/DashboardShell";
+import { api } from "@/lib/api";
+import { formatDate, vnd } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Thanh toán — VIDEO EDITOR" };
+interface Summary {
+  totalPaid: number;
+  coursesOwned: number;
+  pendingInvoices: number;
+}
+interface Order {
+  id: string;
+  code: string;
+  total: string;
+  status: string;
+  createdAt: string;
+  items: { title: string }[];
+}
 
-const STATS = [
-  { ic: Icon.card, val: "16.780.000", unit: "đ", lbl: "Tổng đã thanh toán" },
-  { ic: Icon.bag, val: "2", lbl: "Khóa đã sở hữu" },
-  { ic: Icon.chart, val: "0", lbl: "Hóa đơn chờ thanh toán" },
-];
-
-const INVOICES = [
-  { name: "Khóa Premium Elite", id: "#INV-2042 · 03/06/2026", price: "10.890.000" },
-  { name: "Khóa Premium", id: "#INV-1987 · 12/05/2026", price: "5.890.000" },
-];
+const STATUS = {
+  PAID: { cls: "done", label: "Đã thanh toán" },
+  PENDING: { cls: "pending", label: "Chờ thanh toán" },
+  REFUNDED: { cls: "refund", label: "Hoàn tiền" },
+  CANCELLED: { cls: "hidden2", label: "Đã hủy" },
+  EXPIRED: { cls: "hidden2", label: "Hết hạn" },
+} as Record<string, { cls: string; label: string }>;
 
 export default function PaymentPage() {
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  useEffect(() => {
+    api.get<Summary>("/orders/my/summary").then(setSummary).catch(() => undefined);
+    api.getFull<Order[]>("/orders/my", { limit: 50 }).then((r) => setOrders(r.data ?? [])).catch(() => undefined);
+  }, []);
+
+  const STATS = [
+    { ic: Icon.card, val: vnd(summary?.totalPaid ?? 0), unit: "đ", lbl: "Tổng đã thanh toán" },
+    { ic: Icon.bag, val: String(summary?.coursesOwned ?? 0), lbl: "Khóa đã sở hữu" },
+    { ic: Icon.chart, val: String(summary?.pendingInvoices ?? 0), lbl: "Hóa đơn chờ thanh toán" },
+  ];
+
   return (
     <DashboardShell title="Thanh toán & hóa đơn" subtitle="Quản lý phương thức thanh toán và lịch sử giao dịch.">
       <div className="pay-top">
@@ -34,13 +61,12 @@ export default function PaymentPage() {
       <div className="panel" style={{ marginBottom: 20 }}>
         <div className="panel-h">
           <h3>Phương thức thanh toán</h3>
-          <a className="ct-act">+ Thêm phương thức</a>
         </div>
         <div className="method">
           <div className="mc" />
           <div>
-            <div className="ct-nm">Visa •••• 6411</div>
-            <div className="ct-meta">Hết hạn 08/27 · Mặc định</div>
+            <div className="ct-nm">Chuyển khoản ngân hàng / SePay</div>
+            <div className="ct-meta">Quét QR khi mua khóa học · Tự động xác nhận</div>
           </div>
         </div>
       </div>
@@ -48,7 +74,7 @@ export default function PaymentPage() {
       <div className="panel">
         <div className="panel-h">
           <h3>Lịch sử hóa đơn</h3>
-          <span className="sub">2 hóa đơn</span>
+          <span className="sub">{orders.length} hóa đơn</span>
         </div>
         <div className="iv-row iv-head">
           <div>Khóa học</div>
@@ -56,24 +82,30 @@ export default function PaymentPage() {
           <div>Trạng thái</div>
           <div />
         </div>
-        {INVOICES.map((iv) => (
-          <div key={iv.id} className="iv-row">
-            <div>
-              <div className="ct-nm">{iv.name}</div>
-              <div className="ct-meta">{iv.id}</div>
+        {orders.map((o) => {
+          const st = STATUS[o.status] ?? STATUS.PENDING;
+          return (
+            <div key={o.id} className="iv-row">
+              <div>
+                <div className="ct-nm">{o.items.map((i) => i.title).join(", ") || "Đơn hàng"}</div>
+                <div className="ct-meta">#{o.code} · {formatDate(o.createdAt)}</div>
+              </div>
+              <div className="price">
+                {vnd(o.total)}
+                <span style={{ fontSize: 11, color: "var(--muted-2)", fontWeight: 400 }}>đ</span>
+              </div>
+              <div>
+                <span className={"badge " + st.cls}>{st.label}</span>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                {o.status === "PENDING" && (
+                  <a className="ct-act" href="/courses/catalog">Thanh toán</a>
+                )}
+              </div>
             </div>
-            <div className="price">
-              {iv.price}
-              <span style={{ fontSize: 11, color: "var(--muted-2)", fontWeight: 400 }}>đ</span>
-            </div>
-            <div>
-              <span className="badge done">Đã thanh toán</span>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <a className="ct-act">Tải hóa đơn</a>
-            </div>
-          </div>
-        ))}
+          );
+        })}
+        {orders.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có hóa đơn.</div>}
       </div>
     </DashboardShell>
   );

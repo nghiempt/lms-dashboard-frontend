@@ -1,46 +1,34 @@
 /* ============================================================
-   Fake auth — tạm thời dùng cookie để middleware redirect được.
-   Hỗ trợ 2 vai trò: admin (quản trị) & student (học viên), mỗi vai
-   trò vào một khu vực UI khác nhau.
-   Khi ráp API thật chỉ cần thay verifyCredentials() và thay token
-   "admin"/"student" bằng JWT/session token trả về từ server.
+   Auth thật — gọi LMS Backend qua lib/api.
+   Giữ các export cũ (AuthUser, HOME_BY_ROLE, getCurrentUser, clearSession,
+   setSession, AUTH_COOKIE...) để các trang/shell dùng lại không phải sửa nhiều.
    ============================================================ */
+
+import {
+  api,
+  apiRequest,
+  clearAuthCookies,
+  getDeviceId,
+  getDeviceName,
+  setAuthCookies,
+  tokenStore,
+} from "./api";
 
 export const AUTH_COOKIE = "auth_token";
 export const ROLE_COOKIE = "auth_role";
-export const AUTH_MAX_AGE = 60 * 60 * 24 * 7; // 7 ngày
+export const AUTH_MAX_AGE = 60 * 60 * 24 * 7;
 
 export type Role = "admin" | "student";
 
 export type AuthUser = {
+  id: string;
   name: string;
   email: string;
-  role: string; // nhãn hiển thị (vd: "Quản trị viên", "Học viên")
-  roleKey: Role; // khoá vai trò dùng để định tuyến
-  initials: string; // chữ cái hiển thị trên avatar
+  role: string; // nhãn hiển thị
+  roleKey: Role; // khoá vai trò để định tuyến
+  initials: string;
+  avatarUrl?: string | null;
 };
-
-type FakeAccount = AuthUser & { password: string };
-
-/** 2 tài khoản fake để đăng nhập tạm. */
-const FAKE_ACCOUNTS: FakeAccount[] = [
-  {
-    email: "admin@admin.com",
-    password: "admin",
-    name: "Danmotion",
-    role: "Quản trị viên",
-    roleKey: "admin",
-    initials: "DM",
-  },
-  {
-    email: "student@student.com",
-    password: "student",
-    name: "Tuấn Kiệt",
-    role: "Học viên",
-    roleKey: "student",
-    initials: "TK",
-  },
-];
 
 /** Trang chủ của từng vai trò sau khi đăng nhập. */
 export const HOME_BY_ROLE: Record<Role, string> = {
@@ -48,75 +36,132 @@ export const HOME_BY_ROLE: Record<Role, string> = {
   student: "/",
 };
 
+interface BackendUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: "ADMIN" | "STUDENT";
+  avatarUrl?: string | null;
+}
+interface AuthResult {
+  user: BackendUser;
+  accessToken: string;
+  refreshToken: string;
+}
+
 const DEFAULT_USER: AuthUser = {
-  name: "Tuấn Kiệt",
-  email: "student@student.com",
+  id: "",
+  name: "Học viên",
+  email: "",
   role: "Học viên",
   roleKey: "student",
-  initials: "TK",
+  initials: "HV",
 };
 
-/** Kiểm tra thông tin đăng nhập (fake). Trả về user nếu hợp lệ. */
-export function verifyCredentials(
-  email: string,
-  password: string
-): AuthUser | null {
-  const acc = FAKE_ACCOUNTS.find(
-    (a) =>
-      a.email === email.trim().toLowerCase() && password === a.password
-  );
-  if (!acc) return null;
-  const { password: _pw, ...user } = acc;
-  return user;
+function makeInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function mapUser(be: BackendUser): AuthUser {
+  const roleKey: Role = be.role === "ADMIN" ? "admin" : "student";
+  return {
+    id: be.id,
+    name: be.fullName,
+    email: be.email,
+    role: roleKey === "admin" ? "Quản trị viên" : "Học viên",
+    roleKey,
+    initials: makeInitials(be.fullName),
+    avatarUrl: be.avatarUrl ?? null,
+  };
 }
 
 /** Ghi cookie + lưu user (client side). */
 export function setSession(user: AuthUser) {
-  document.cookie = `${AUTH_COOKIE}=1; path=/; max-age=${AUTH_MAX_AGE}; samesite=lax`;
-  document.cookie = `${ROLE_COOKIE}=${user.roleKey}; path=/; max-age=${AUTH_MAX_AGE}; samesite=lax`;
-  try {
-    localStorage.setItem("auth_user", JSON.stringify(user));
-  } catch {
-    /* ignore */
-  }
+  setAuthCookies(user.roleKey);
+  tokenStore.setUser(user);
 }
 
-/** Xoá cookie + user (client side). */
-export function clearSession() {
-  document.cookie = `${AUTH_COOKIE}=; path=/; max-age=0; samesite=lax`;
-  document.cookie = `${ROLE_COOKIE}=; path=/; max-age=0; samesite=lax`;
-  try {
-    localStorage.removeItem("auth_user");
-  } catch {
-    /* ignore */
-  }
+function persist(result: AuthResult): AuthUser {
+  tokenStore.set(result.accessToken, result.refreshToken);
+  const user = mapUser(result.user);
+  setSession(user);
+  return user;
 }
 
-/** Lấy user đang đăng nhập (client side), fallback về user mặc định. */
+const device = () => ({ deviceId: getDeviceId(), deviceName: getDeviceName() });
+
+// ---------------- public API ----------------
+export async function login(email: string, password: string): Promise<AuthUser> {
+  const data = await api.post<AuthResult>(
+    "/auth/login",
+    { email, password, ...device() },
+    false,
+  );
+  return persist(data);
+}
+
+export async function register(
+  fullName: string,
+  email: string,
+  password: string,
+): Promise<AuthUser> {
+  const data = await api.post<AuthResult>(
+    "/auth/register",
+    { fullName, email, password, ...device() },
+    false,
+  );
+  return persist(data);
+}
+
+export async function googleLogin(idToken: string): Promise<AuthUser> {
+  const data = await api.post<AuthResult>(
+    "/auth/google",
+    { idToken, ...device() },
+    false,
+  );
+  return persist(data);
+}
+
+export async function forgotPassword(email: string): Promise<string> {
+  const data = await api.post<{ message: string }>(
+    "/auth/forgot-password",
+    { email },
+    false,
+  );
+  return data.message;
+}
+
+export async function logout(): Promise<void> {
+  const refreshToken = tokenStore.getRefresh();
+  if (refreshToken) {
+    await apiRequest("/auth/logout", {
+      method: "POST",
+      body: { refreshToken },
+    }).catch(() => undefined);
+  }
+  clearSession();
+}
+
+export function clearSession(): void {
+  tokenStore.clear();
+  clearAuthCookies();
+}
+
 export function getCurrentUser(): AuthUser {
-  if (typeof window === "undefined") return DEFAULT_USER;
-  try {
-    const raw = localStorage.getItem("auth_user");
-    if (raw) {
-      const u = JSON.parse(raw) as Partial<AuthUser>;
-      // tương thích ngược dữ liệu cũ chưa có roleKey/initials
-      return {
-        name: u.name ?? DEFAULT_USER.name,
-        email: u.email ?? DEFAULT_USER.email,
-        role: u.role ?? DEFAULT_USER.role,
-        roleKey: (u.roleKey as Role) ?? "student",
-        initials:
-          u.initials ??
-          (u.name ?? DEFAULT_USER.name)
-            .split(" ")
-            .map((w) => w[0])
-            .slice(-2)
-            .join("")
-            .toUpperCase(),
-      };
-    }
-  } catch {
-    /* ignore */
-  }
-  return DEFAULT_USER;
+  return tokenStore.getUser<AuthUser>() ?? DEFAULT_USER;
+}
+
+export function isAuthed(): boolean {
+  return !!tokenStore.getAccess();
+}
+
+/** Đồng bộ lại user từ /auth/me. */
+export async function refreshCurrentUser(): Promise<AuthUser> {
+  const be = await api.get<BackendUser>("/auth/me");
+  const user = mapUser(be);
+  setSession(user);
+  return user;
 }
