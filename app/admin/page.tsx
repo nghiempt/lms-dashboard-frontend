@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AdminShell from "../components/AdminShell";
 import { AdminIcon } from "../components/adminIcons";
+import { Skeleton, SkeletonRows } from "../components/Loaders";
 import { api } from "@/lib/api";
 import { compactVnd, vnd } from "@/lib/format";
 
@@ -74,7 +75,7 @@ export default function AdminDashboardPage() {
         {STATS.map((s, i) => (
           <div key={i} className="panel stat">
             <div className="ic">{s.ic}</div>
-            <div className="val">{s.val}</div>
+            <div className="val">{ov ? s.val : <Skeleton width={70} height={26} radius={6} />}</div>
             <div className="lbl">{s.lbl}</div>
           </div>
         ))}
@@ -100,6 +101,7 @@ export default function AdminDashboardPage() {
 
         <div className="panel">
           <div className="panel-h"><h3>Khóa bán chạy</h3></div>
+          {!ov && <SkeletonRows rows={4} />}
           {top.map((c) => (
             <div key={c.courseId} className="atbl-r" style={{ gridTemplateColumns: "2fr 1fr 1fr" }}>
               <div className="a-name">
@@ -115,7 +117,7 @@ export default function AdminDashboardPage() {
               <div className="price" style={{ textAlign: "right" }}>{compactVnd(c.revenue)}</div>
             </div>
           ))}
-          {top.length === 0 && <div className="ct-meta">Chưa có dữ liệu.</div>}
+          {ov && top.length === 0 && <div className="ct-meta">Chưa có dữ liệu.</div>}
         </div>
       </div>
 
@@ -127,6 +129,7 @@ export default function AdminDashboardPage() {
         <div className="atbl-h" style={{ gridTemplateColumns: ORDER_COLS }}>
           <div>Mã đơn</div><div>Học viên</div><div>Khóa học</div><div>Số tiền</div><div>Trạng thái</div>
         </div>
+        {!ov && <SkeletonRows rows={4} />}
         {orders.map((o) => {
           const st = ORDER_STATUS[o.status] ?? ORDER_STATUS.PENDING;
           return (
@@ -139,7 +142,7 @@ export default function AdminDashboardPage() {
             </div>
           );
         })}
-        {orders.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có đơn hàng.</div>}
+        {ov && orders.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có đơn hàng.</div>}
       </div>
     </AdminShell>
   );

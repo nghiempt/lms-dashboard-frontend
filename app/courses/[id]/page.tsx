@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardShell from "../../components/DashboardShell";
+import { PageLoader, Spinner } from "../../components/Loaders";
 import { api } from "@/lib/api";
 import { duration } from "@/lib/format";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
@@ -47,11 +48,21 @@ const LockIcon = (
   </svg>
 );
 const PlayIcon = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
 );
 const CheckIcon = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
 );
+const BackIcon = (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 18l-6-6 6-6" /></svg>
+);
+
+function typeLabel(type: string): string {
+  const t = (type || "").toUpperCase();
+  if (t === "ARTICLE") return "Bài đọc";
+  if (t === "QUIZ") return "Trắc nghiệm";
+  return "Video";
+}
 
 export default function LearnPage() {
   const params = useParams();
@@ -124,92 +135,137 @@ export default function LearnPage() {
     }
   }
 
-  const lessonCount = detail?.chapters.reduce((s, c) => s + c.lessons.length, 0) ?? 0;
-  const doneCount =
-    detail?.chapters
-      .flatMap((c) => c.lessons)
-      .filter((l) => l.progress.status === "COMPLETED").length ?? 0;
+  const allLessons = detail?.chapters.flatMap((c) => c.lessons) ?? [];
+  const lessonCount = allLessons.length;
+  const doneCount = allLessons.filter((l) => l.progress.status === "COMPLETED").length;
+  const pct = detail?.enrollment?.progressPct ?? (lessonCount ? Math.round((doneCount / lessonCount) * 100) : 0);
+  const isDone = active?.progress.status === "COMPLETED";
+
+  // Đang tải lần đầu: hiển thị loader đẹp thay cho chữ trơn.
+  if (!detail && !error) {
+    return (
+      <DashboardShell title="Đang tải khóa học" subtitle="Vui lòng chờ trong giây lát...">
+        <PageLoader label="Đang tải nội dung khóa học..." />
+      </DashboardShell>
+    );
+  }
 
   return (
     <DashboardShell
-      title={detail?.title ?? "Đang tải..."}
-      subtitle={`Tiến độ ${detail?.enrollment?.progressPct ?? 0}% · ${doneCount}/${lessonCount} bài hoàn thành`}
+      title={detail?.title ?? "Khóa học"}
+      subtitle={`Tiến độ ${pct}% · ${doneCount}/${lessonCount} bài hoàn thành`}
     >
-      {error && <div className="panel" style={{ padding: 14, marginBottom: 14, color: "#c0392b" }}>{error}</div>}
+      {error && (
+        <div className="list-error" style={{ marginBottom: 16 }}>
+          <span>{error}</span>
+        </div>
+      )}
 
-      <div className="player-grid">
-        {/* Player */}
-        <div className="panel">
-          {active ? (
-            <>
-              <div style={{ aspectRatio: "16/9", background: "#000", borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
-                {play?.video?.source === "BUNNY" && (
-                  <iframe src={play.video.embedUrl} title={play.title} allow="fullscreen" style={{ width: "100%", height: "100%", border: 0 }} />
-                )}
-                {play?.video?.source === "YOUTUBE" && (
-                  <iframe src={`https://www.youtube.com/embed/${play.video.youtubeId}`} title={play.title} allow="fullscreen" style={{ width: "100%", height: "100%", border: 0 }} />
-                )}
-                {play && !play.video && play.type === "ARTICLE" && (
-                  <div style={{ color: "#fff", padding: 24, height: "100%", overflow: "auto" }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(play.articleHtml) }} />
-                )}
-                {play && !play.video && play.type !== "ARTICLE" && (
-                  <div style={{ color: "#fff", display: "grid", placeItems: "center", height: "100%" }}>Bài học chưa có video</div>
-                )}
-                {!play && <div style={{ color: "#fff", display: "grid", placeItems: "center", height: "100%" }}>Đang tải bài học...</div>}
+      <div className="cdx">
+        {/* ===== Cột trái: sân khấu video + thông tin bài học ===== */}
+        <div className="cdx-main">
+          <div className="cdx-stage">
+            {/* --- LOGIC VIDEO GIỮ NGUYÊN --- */}
+            {play?.video?.source === "BUNNY" && (
+              <iframe src={play.video.embedUrl} title={play.title} allow="fullscreen" style={{ width: "100%", height: "100%", border: 0 }} />
+            )}
+            {play?.video?.source === "YOUTUBE" && (
+              <iframe src={`https://www.youtube.com/embed/${play.video.youtubeId}`} title={play.title} allow="fullscreen" style={{ width: "100%", height: "100%", border: 0 }} />
+            )}
+            {play && !play.video && play.type === "ARTICLE" && (
+              <div className="cdx-article" dangerouslySetInnerHTML={{ __html: sanitizeHtml(play.articleHtml) }} />
+            )}
+            {play && !play.video && play.type !== "ARTICLE" && (
+              <div className="cdx-stage-empty">Bài học chưa có video</div>
+            )}
+            {!play && active && (
+              <div className="cdx-stage-empty">
+                <Spinner size={30} />
+                <span style={{ marginTop: 12 }}>Đang tải bài học...</span>
               </div>
-              <div className="panel-h">
-                <h3>{active.title}</h3>
-                <span className="sub">{active.durationSec ? duration(active.durationSec) : ""}</span>
+            )}
+            {!active && <div className="cdx-stage-empty">Chọn một bài học để bắt đầu</div>}
+          </div>
+
+          {active && (
+            <div className="cdx-lesson">
+              <div className="cdx-lesson-tags">
+                <span className="cdx-pill">{typeLabel(active.type)}</span>
+                {active.isPreview && <span className="cdx-pill free">Học thử</span>}
+                {isDone && <span className="cdx-pill done">{CheckIcon} Đã hoàn thành</span>}
+              </div>
+              <h2 className="cdx-lesson-title">{active.title}</h2>
+              <div className="cdx-lesson-meta">
+                {active.durationSec ? (
+                  <span className="cdx-meta-item">{PlayIcon} {duration(active.durationSec)} phút</span>
+                ) : null}
               </div>
               <button
-                className="btn btn-primary"
-                style={{ marginTop: 8 }}
-                disabled={saving || active.progress.status === "COMPLETED"}
+                className="btn btn-primary cdx-complete"
+                disabled={saving || isDone}
                 onClick={markComplete}
               >
-                {active.progress.status === "COMPLETED" ? "✓ Đã hoàn thành" : saving ? "Đang lưu..." : "Đánh dấu hoàn thành"}
+                {isDone ? (
+                  <>{CheckIcon} Đã hoàn thành</>
+                ) : saving ? (
+                  <><Spinner size={15} /> Đang lưu...</>
+                ) : (
+                  "Đánh dấu hoàn thành"
+                )}
               </button>
-            </>
-          ) : (
-            <div style={{ padding: 24 }}>Chọn một bài học để bắt đầu.</div>
+            </div>
           )}
         </div>
 
-        {/* Curriculum */}
-        <div className="panel">
-          <div className="panel-h"><h3>Nội dung khóa học</h3></div>
-          {detail?.chapters.map((ch, ci) => (
-            <div key={ch.id} style={{ marginBottom: 14 }}>
-              <div className="ct-nm" style={{ marginBottom: 8 }}>{ci + 1}. {ch.title}</div>
-              {ch.lessons.map((l) => {
-                const isActive = active?.id === l.id;
-                const done = l.progress.status === "COMPLETED";
-                return (
-                  <button
-                    key={l.id}
-                    onClick={() => openLesson(l)}
-                    disabled={l.locked}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10, width: "100%",
-                      padding: "10px 12px", marginBottom: 6, borderRadius: 10, textAlign: "left",
-                      border: "1px solid var(--line)", cursor: l.locked ? "not-allowed" : "pointer",
-                      background: isActive ? "var(--accent-soft, #eef)" : "transparent",
-                      opacity: l.locked ? 0.55 : 1,
-                    }}
-                  >
-                    <span style={{ color: done ? "#1a7f46" : "var(--muted)" }}>
-                      {l.locked ? LockIcon : done ? CheckIcon : PlayIcon}
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 14 }}>{l.title}</span>
-                    {l.isPreview && <span className="badge learning" style={{ fontSize: 10 }}>Free</span>}
-                    {l.durationSec ? <span className="ct-meta">{duration(l.durationSec)}</span> : null}
-                  </button>
-                );
-              })}
+        {/* ===== Cột phải: chương trình học ===== */}
+        <aside className="cdx-side">
+          <div className="cdx-side-head">
+            <div className="cdx-side-title">Nội dung khóa học</div>
+            <div className="cdx-side-sub">{detail?.chapters.length ?? 0} chương · {lessonCount} bài học</div>
+            <div className="cdx-prog">
+              <div className="cdx-prog-track"><div className="cdx-prog-fill" style={{ width: `${pct}%` }} /></div>
+              <span className="cdx-prog-pct">{pct}%</span>
             </div>
-          ))}
-          <Link className="ct-act" href="/courses">← Về khóa học của tôi</Link>
-        </div>
+          </div>
+
+          <div className="cdx-chapters">
+            {detail?.chapters.map((ch, ci) => {
+              const chDone = ch.lessons.filter((l) => l.progress.status === "COMPLETED").length;
+              return (
+                <div key={ch.id} className="cdx-ch">
+                  <div className="cdx-ch-h">
+                    <span className="cdx-ch-no">{ci + 1}</span>
+                    <span className="cdx-ch-nm">{ch.title}</span>
+                    <span className="cdx-ch-count">{chDone}/{ch.lessons.length}</span>
+                  </div>
+                  <div className="cdx-les-list">
+                    {ch.lessons.map((l) => {
+                      const isActive = active?.id === l.id;
+                      const done = l.progress.status === "COMPLETED";
+                      return (
+                        <button
+                          key={l.id}
+                          onClick={() => openLesson(l)}
+                          disabled={l.locked}
+                          className={"cdx-les" + (isActive ? " active" : "") + (l.locked ? " locked" : "")}
+                        >
+                          <span className={"cdx-les-ic" + (done ? " done" : "")}>
+                            {l.locked ? LockIcon : done ? CheckIcon : PlayIcon}
+                          </span>
+                          <span className="cdx-les-nm">{l.title}</span>
+                          {l.isPreview && <span className="cdx-pill free sm">Free</span>}
+                          {l.durationSec ? <span className="cdx-les-dur">{duration(l.durationSec)}</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <Link className="cdx-back" href="/courses">{BackIcon} Về khóa học của tôi</Link>
+        </aside>
       </div>
     </DashboardShell>
   );

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import DashboardShell from "../components/DashboardShell";
+import { Skeleton } from "../components/Loaders";
 import { api } from "@/lib/api";
 import { vnd } from "@/lib/format";
 
@@ -65,7 +66,22 @@ export default function CoursesPage() {
         <Link className="btn" href="/courses/catalog">+ Khám phá khóa học</Link>
       </div>
 
-      {loading && <div className="panel" style={{ padding: 24 }}>Đang tải...</div>}
+      {loading && (
+        <div className="cc-grid">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="panel cc-card">
+              <Skeleton height={120} radius={0} style={{ display: "block" }} />
+              <div className="cc-body">
+                <Skeleton width={80} height={20} radius={20} />
+                <Skeleton width="85%" height={18} style={{ marginTop: 14 }} />
+                <Skeleton width="55%" height={12} style={{ marginTop: 10 }} />
+                <Skeleton height={8} radius={6} style={{ marginTop: 18 }} />
+                <Skeleton height={40} radius={10} style={{ marginTop: 18 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!loading && visible.length === 0 && (
         <div className="panel" style={{ padding: 24 }}>

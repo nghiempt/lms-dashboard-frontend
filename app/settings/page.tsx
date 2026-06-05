@@ -71,10 +71,14 @@ export default function SettingsPage() {
     }).catch(() => undefined);
   }, []);
 
+  const phoneValid = !phone.trim() || /^[0-9+\s.\-()]{8,15}$/.test(phone.trim());
+  const profileValid = fullName.trim().length >= 2 && phoneValid;
+
   async function saveProfile() {
+    if (!profileValid) return toast.error("Vui lòng nhập họ tên (≥2 ký tự) và số điện thoại hợp lệ.");
     setMsg("");
     try {
-      await api.patch("/users/me", { fullName, phone, bio });
+      await api.patch("/users/me", { fullName: fullName.trim(), phone: phone.trim(), bio });
       await refreshCurrentUser();
       setProfileDirty(false);
       toast.success("Đã lưu hồ sơ.");
@@ -180,12 +184,13 @@ export default function SettingsPage() {
           <div className="se-field">
             <label>Số điện thoại</label>
             <input type="tel" value={phone} onChange={(e) => { setPhone(e.target.value); setProfileDirty(true); }} />
+            {phone.trim() && !phoneValid && <span className="fld-err">Số điện thoại không hợp lệ (8–15 chữ số).</span>}
           </div>
           <div className="se-field">
             <label>Giới thiệu</label>
             <input type="text" value={bio} onChange={(e) => { setBio(e.target.value); setProfileDirty(true); }} />
           </div>
-          <button className="btn" type="button" style={{ marginTop: 6 }} disabled={!profileDirty} onClick={saveProfile}>
+          <button className="btn" type="button" style={{ marginTop: 6 }} disabled={!profileDirty || !profileValid} onClick={saveProfile}>
             Lưu thay đổi
           </button>
         </div>
@@ -197,7 +202,7 @@ export default function SettingsPage() {
             <PwRow label="Mật khẩu hiện tại" value={curPw} onChange={setCurPw} />
             <PwRow label="Mật khẩu mới" value={newPw} onChange={setNewPw} />
             <PwRow label="Nhập lại mật khẩu mới" value={confirmPw} onChange={setConfirmPw} />
-            <button className="btn" type="button" style={{ marginTop: 6 }} disabled={!curPw || !newPw} onClick={changePassword}>
+            <button className="btn" type="button" style={{ marginTop: 6 }} disabled={!curPw || newPw.length < 8 || newPw !== confirmPw} onClick={changePassword}>
               Cập nhật mật khẩu
             </button>
           </div>

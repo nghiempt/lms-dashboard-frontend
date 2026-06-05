@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import DashboardShell from "../../components/DashboardShell";
+import { Skeleton } from "../../components/Loaders";
+import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { vnd } from "@/lib/format";
 
@@ -26,6 +28,7 @@ interface CheckoutInfo {
 
 function CatalogInner() {
   const router = useRouter();
+  const toast = useToast();
   const searchParams = useSearchParams();
   const q = searchParams.get("search") ?? "";
   const [rows, setRows] = useState<CatalogCourse[]>([]);
@@ -35,7 +38,6 @@ function CatalogInner() {
   const [checkout, setCheckout] = useState<CheckoutInfo | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
-  const [msg, setMsg] = useState("");
 
   function load() {
     setLoading(true);
@@ -55,7 +57,6 @@ function CatalogInner() {
 
   async function buy(c: CatalogCourse) {
     setBusy(c.id);
-    setMsg("");
     try {
       const order = await api.post<{ id: string; status: string }>("/orders", {
         courseIds: [c.id],
@@ -71,7 +72,7 @@ function CatalogInner() {
       setOrderId(order.id);
       setCheckout(info);
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message || "Không tạo được đơn hàng.");
     } finally {
       setBusy(null);
     }
@@ -85,12 +86,12 @@ function CatalogInner() {
       if (order.status === "PAID") {
         setCheckout(null);
         load();
-        setMsg("Thanh toán thành công! Khóa học đã được mở.");
+        toast.success("Thanh toán thành công! Khóa học đã được mở.");
       } else {
-        setMsg("Chưa nhận được thanh toán. Vui lòng chuyển khoản rồi thử lại.");
+        toast.info("Chưa nhận được thanh toán. Vui lòng chuyển khoản rồi thử lại.");
       }
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message || "Kiểm tra thanh toán thất bại.");
     } finally {
       setPolling(false);
     }
@@ -98,10 +99,21 @@ function CatalogInner() {
 
   return (
     <DashboardShell title="Khám phá khóa học" subtitle="Chọn khóa học phù hợp và bắt đầu ngay.">
-      {msg && (
-        <div className="panel" style={{ padding: 14, marginBottom: 16, color: "var(--accent)" }}>{msg}</div>
+      {loading && (
+        <div className="cc-grid">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="panel cc-card">
+              <Skeleton height={120} radius={0} style={{ display: "block" }} />
+              <div className="cc-body">
+                <Skeleton width={80} height={20} radius={20} />
+                <Skeleton width="85%" height={18} style={{ marginTop: 14 }} />
+                <Skeleton width="55%" height={12} style={{ marginTop: 10 }} />
+                <Skeleton height={40} radius={10} style={{ marginTop: 18 }} />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
-      {loading && <div className="panel" style={{ padding: 24 }}>Đang tải...</div>}
       {!loading && q && (
         <div className="ct-meta" style={{ marginBottom: 12 }}>
           Kết quả cho “{q}” · {rows.length} khóa{" "}

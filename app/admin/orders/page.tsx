@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
+import { Skeleton, SkeletonRows } from "../../components/Loaders";
+import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { compactVnd, formatDate, vnd } from "@/lib/format";
 
@@ -33,6 +35,7 @@ const IconRefund = (
 );
 
 export default function AdminOrdersPage() {
+  const toast = useToast();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -45,15 +48,27 @@ export default function AdminOrdersPage() {
 
   async function confirm(id: string) {
     setBusy(id);
-    await api.patch(`/orders/${id}/confirm`, {}).catch(() => undefined);
-    setBusy(null);
-    load();
+    try {
+      await api.patch(`/orders/${id}/confirm`, {});
+      toast.success("Đã xác nhận đơn hàng.");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Xác nhận đơn thất bại.");
+    } finally {
+      setBusy(null);
+    }
   }
   async function refund(id: string) {
     setBusy(id);
-    await api.patch(`/orders/${id}/refund`, {}).catch(() => undefined);
-    setBusy(null);
-    load();
+    try {
+      await api.patch(`/orders/${id}/refund`, {});
+      toast.success("Đã hoàn tiền đơn hàng.");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message || "Hoàn tiền thất bại.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   const cards = [
@@ -69,7 +84,7 @@ export default function AdminOrdersPage() {
         {cards.map((c, i) => (
           <div key={i} className="panel stat">
             <div className="ic">{c.ic}</div>
-            <div className="val">{c.val}</div>
+            <div className="val">{summary ? c.val : <Skeleton width={70} height={26} radius={6} />}</div>
             <div className="lbl">{c.lbl}</div>
           </div>
         ))}
@@ -83,6 +98,7 @@ export default function AdminOrdersPage() {
         <div className="atbl-h" style={{ gridTemplateColumns: COLS }}>
           <div>Mã đơn</div><div>Học viên</div><div>Khóa học</div><div>Số tiền</div><div>Ngày</div><div>Trạng thái</div><div>Hành động</div>
         </div>
+        {!summary && <SkeletonRows rows={5} />}
         {rows.map((o) => {
           const st = STATUS[o.status] ?? STATUS.PENDING;
           return (
@@ -104,7 +120,7 @@ export default function AdminOrdersPage() {
             </div>
           );
         })}
-        {rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có đơn hàng.</div>}
+        {summary && rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có đơn hàng.</div>}
       </div>
     </AdminShell>
   );

@@ -2,9 +2,13 @@
 
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
+import { Spinner } from "../../components/Loaders";
 import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { refreshCurrentUser } from "@/lib/auth";
+
+const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+const isUrl = (v: string) => /^https?:\/\/.+/i.test(v.trim());
 
 function EyeIcon() {
   return (
@@ -32,14 +36,24 @@ export default function AdminSettingsPage() {
   const toast = useToast();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
-  const [profileMsg, setProfileMsg] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
 
   const [curPw, setCurPw] = useState(""); const [newPw, setNewPw] = useState(""); const [confirmPw, setConfirmPw] = useState("");
   const [pwMsg, setPwMsg] = useState("");
+  const [savingPw, setSavingPw] = useState(false);
 
   const [site, setSite] = useState({ "site.name": "", "contact.email": "", "contact.hotline": "", "social.tiktok": "", "social.youtube": "" });
-  const [siteMsg, setSiteMsg] = useState("");
+  const [savingSite, setSavingSite] = useState(false);
   const [toggles, setToggles] = useState<Record<ToggleKey, boolean>>({ "payment.sepay": true, "payment.bank": false, "notify.new_order": true, "notify.refund": true });
+
+  // ---- Điều kiện hợp lệ (gate nút submit) ----
+  const profileValid = displayName.trim().length >= 2;
+  const pwValid = curPw.length > 0 && newPw.length >= 8 && newPw === confirmPw;
+  const siteValid =
+    site["site.name"].trim().length > 0 &&
+    (!site["contact.email"].trim() || isEmail(site["contact.email"])) &&
+    (!site["social.tiktok"].trim() || isUrl(site["social.tiktok"])) &&
+    (!site["social.youtube"].trim() || isUrl(site["social.youtube"]));
 
   useEffect(() => {
     api.get<Me>("/users/me").then((m) => { setDisplayName(m.fullName); setEmail(m.email); }).catch(() => undefined);
@@ -61,27 +75,36 @@ export default function AdminSettingsPage() {
   }, []);
 
   async function saveProfile() {
-    setProfileMsg("");
+    if (!profileValid) return toast.error("Tên hiển thị tối thiểu 2 ký tự.");
+    setSavingProfile(true);
     try {
-      await api.patch("/users/me", { fullName: displayName });
+      await api.patch("/users/me", { fullName: displayName.trim() });
       await refreshCurrentUser();
       toast.success("Đã lưu hồ sơ.");
     } catch (e) {
       toast.error((e as Error).message || "Lưu hồ sơ thất bại.");
+    } finally {
+      setSavingProfile(false);
     }
   }
   async function changePassword() {
     setPwMsg("");
     if (newPw.length < 8) return setPwMsg("Mật khẩu mới tối thiểu 8 ký tự.");
     if (newPw !== confirmPw) return setPwMsg("Mật khẩu nhập lại không khớp.");
+    setSavingPw(true);
     try {
       await api.post("/auth/change-password", { currentPassword: curPw, newPassword: newPw });
       setCurPw(""); setNewPw(""); setConfirmPw("");
       toast.success("Đổi mật khẩu thành công.");
-    } catch (e) { setPwMsg((e as Error).message); }
+    } catch (e) {
+      setPwMsg((e as Error).message);
+    } finally {
+      setSavingPw(false);
+    }
   }
   async function saveSite() {
-    setSiteMsg("");
+    if (!siteValid) return toast.error("Vui lòng kiểm tra lại thông tin website (tên, email, link).");
+    setSavingSite(true);
     const items = [
       { key: "site.name", value: site["site.name"], group: "general" },
       { key: "contact.email", value: site["contact.email"], group: "contact" },
@@ -94,6 +117,8 @@ export default function AdminSettingsPage() {
       toast.success("Đã lưu cấu hình.");
     } catch (e) {
       toast.error((e as Error).message || "Lưu cấu hình thất bại.");
+    } finally {
+      setSavingSite(false);
     }
   }
   async function flip(key: ToggleKey) {
@@ -121,10 +146,11 @@ export default function AdminSettingsPage() {
         <div>
           <div className="panel" style={{ marginBottom: 16 }}>
             <div className="panel-h"><h3>Hồ sơ quản trị</h3></div>
-            {profileMsg && <div className="ct-meta" style={{ marginBottom: 8, color: "var(--accent)" }}>{profileMsg}</div>}
             <div className="se-field"><label>Tên hiển thị</label><input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></div>
             <div className="se-field"><label>Email</label><input type="email" value={email} disabled /></div>
-            <button className="btn-sm" onClick={saveProfile}>Lưu thay đổi</button>
+            <button className="btn-sm" onClick={saveProfile} disabled={!profileValid || savingProfile}>
+              {savingProfile ? <><Spinner size={14} /> Đang lưu...</> : "Lưu thay đổi"}
+            </button>
           </div>
 
           <div className="panel">
@@ -133,20 +159,39 @@ export default function AdminSettingsPage() {
             <PwRow label="Mật khẩu hiện tại" value={curPw} onChange={setCurPw} />
             <PwRow label="Mật khẩu mới" value={newPw} onChange={setNewPw} />
             <PwRow label="Nhập lại mật khẩu mới" value={confirmPw} onChange={setConfirmPw} />
-            <button className="btn-sm" onClick={changePassword}>Cập nhật mật khẩu</button>
+            <button className="btn-sm" onClick={changePassword} disabled={!pwValid || savingPw}>
+              {savingPw ? <><Spinner size={14} /> Đang lưu...</> : "Cập nhật mật khẩu"}
+            </button>
           </div>
         </div>
 
         <div>
           <div className="panel" style={{ marginBottom: 16 }}>
             <div className="panel-h"><h3>Thông tin website</h3></div>
-            {siteMsg && <div className="ct-meta" style={{ marginBottom: 8, color: "var(--accent)" }}>{siteMsg}</div>}
-            <div className="se-field"><label>Tên website</label><input value={site["site.name"]} onChange={(e) => setSite({ ...site, "site.name": e.target.value })} /></div>
-            <div className="se-field"><label>Email liên hệ</label><input value={site["contact.email"]} onChange={(e) => setSite({ ...site, "contact.email": e.target.value })} /></div>
+            <div className="se-field">
+              <label>Tên website</label>
+              <input value={site["site.name"]} onChange={(e) => setSite({ ...site, "site.name": e.target.value })} />
+              {!site["site.name"].trim() && <span className="fld-err">Tên website không được để trống.</span>}
+            </div>
+            <div className="se-field">
+              <label>Email liên hệ</label>
+              <input value={site["contact.email"]} onChange={(e) => setSite({ ...site, "contact.email": e.target.value })} />
+              {site["contact.email"].trim() && !isEmail(site["contact.email"]) && <span className="fld-err">Email không hợp lệ.</span>}
+            </div>
             <div className="se-field"><label>Hotline</label><input value={site["contact.hotline"]} onChange={(e) => setSite({ ...site, "contact.hotline": e.target.value })} /></div>
-            <div className="se-field"><label>Link TikTok</label><input value={site["social.tiktok"]} onChange={(e) => setSite({ ...site, "social.tiktok": e.target.value })} /></div>
-            <div className="se-field"><label>Link YouTube</label><input value={site["social.youtube"]} onChange={(e) => setSite({ ...site, "social.youtube": e.target.value })} /></div>
-            <button className="btn-sm" onClick={saveSite}>Lưu cấu hình</button>
+            <div className="se-field">
+              <label>Link TikTok</label>
+              <input value={site["social.tiktok"]} onChange={(e) => setSite({ ...site, "social.tiktok": e.target.value })} />
+              {site["social.tiktok"].trim() && !isUrl(site["social.tiktok"]) && <span className="fld-err">Link phải bắt đầu bằng http(s)://</span>}
+            </div>
+            <div className="se-field">
+              <label>Link YouTube</label>
+              <input value={site["social.youtube"]} onChange={(e) => setSite({ ...site, "social.youtube": e.target.value })} />
+              {site["social.youtube"].trim() && !isUrl(site["social.youtube"]) && <span className="fld-err">Link phải bắt đầu bằng http(s)://</span>}
+            </div>
+            <button className="btn-sm" onClick={saveSite} disabled={!siteValid || savingSite}>
+              {savingSite ? <><Spinner size={14} /> Đang lưu...</> : "Lưu cấu hình"}
+            </button>
           </div>
 
           <div className="panel" style={{ marginBottom: 16 }}>

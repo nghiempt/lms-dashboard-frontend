@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
+import { SkeletonRows } from "../../components/Loaders";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 
@@ -23,9 +24,13 @@ function initials(name: string) {
 
 export default function AdminActivityPage() {
   const [rows, setRows] = useState<Log[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getFull<Log[]>("/activity", { limit: 100 }).then((r) => setRows(r.data ?? [])).catch(() => undefined);
+    api.getFull<Log[]>("/activity", { limit: 100 })
+      .then((r) => setRows(r.data ?? []))
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -38,6 +43,7 @@ export default function AdminActivityPage() {
         <div className="atbl-h" style={{ gridTemplateColumns: COLS }}>
           <div>Tài khoản</div><div>Thời gian truy cập</div><div>Hành động</div><div>IP</div><div>Thiết bị</div>
         </div>
+        {loading && <SkeletonRows rows={6} />}
         {rows.map((r) => (
           <div key={r.id} className="atbl-r" style={{ gridTemplateColumns: COLS }}>
             <div className="a-name">
@@ -50,7 +56,7 @@ export default function AdminActivityPage() {
             <div className="a-sub" style={{ fontSize: 13, color: "var(--muted)" }}>{r.deviceLabel ?? "—"}</div>
           </div>
         ))}
-        {rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có hoạt động.</div>}
+        {!loading && rows.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có hoạt động.</div>}
       </div>
     </AdminShell>
   );

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AdminShell from "../../components/AdminShell";
+import { Spinner } from "../../components/Loaders";
 import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { compactVnd, vnd } from "@/lib/format";
@@ -191,7 +192,7 @@ function AdminCoursesInner() {
           </div>
           <div className="modal-act">
             <button type="button" className="btn-sec" onClick={() => setModalOpen(false)}>Hủy</button>
-            <button type="button" className="btn-danger" disabled={saving} onClick={handleCreate}>{saving ? "Đang tạo..." : "Tạo khóa học"}</button>
+            <button type="button" className="btn-danger" disabled={saving} onClick={handleCreate}>{saving ? <><Spinner size={14} /> Đang tạo...</> : "Tạo khóa học"}</button>
           </div>
         </div>
       </div>
@@ -203,7 +204,7 @@ function AdminCoursesInner() {
           <p>Hành động này không thể hoàn tác.</p>
           <div className="modal-act">
             <button type="button" className="btn-sec" onClick={() => setDelId(null)} disabled={deleting}>Hủy</button>
-            <button type="button" className="btn-danger" onClick={confirmDelete} disabled={deleting}>{deleting ? "Đang xóa..." : "Xóa"}</button>
+            <button type="button" className="btn-danger" onClick={confirmDelete} disabled={deleting}>{deleting ? <><Spinner size={14} /> Đang xóa...</> : "Xóa"}</button>
           </div>
         </div>
       </div>

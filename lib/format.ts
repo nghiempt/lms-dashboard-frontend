@@ -15,6 +15,59 @@ export function compactVnd(n: number | string | null | undefined): string {
   return String(num);
 }
 
+/** Map MIME phổ biến -> nhãn gọn. */
+const MIME_LABEL: Record<string, string> = {
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+  "application/msword": "DOC",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+  "application/vnd.ms-excel": "XLS",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+  "application/vnd.ms-powerpoint": "PPT",
+  "application/pdf": "PDF",
+  "application/zip": "ZIP",
+  "application/x-zip-compressed": "ZIP",
+  "application/x-rar-compressed": "RAR",
+  "application/vnd.rar": "RAR",
+  "application/x-7z-compressed": "7Z",
+  "text/plain": "TXT",
+  "text/csv": "CSV",
+  "image/jpeg": "JPG",
+  "image/png": "PNG",
+  "image/gif": "GIF",
+  "image/webp": "WEBP",
+  "image/svg+xml": "SVG",
+  "video/mp4": "MP4",
+  "video/quicktime": "MOV",
+  "audio/mpeg": "MP3",
+};
+
+/**
+ * Chuẩn hoá nhãn loại file để hiển thị: nhận MIME, đuôi file, hoặc tên file
+ * và trả về nhãn ngắn gọn viết hoa (VD: "DOCX", "PDF"). Có thể truyền thêm
+ * tên/url file để suy ra đuôi khi fileType là MIME lạ.
+ */
+export function prettyFileType(
+  fileType: string | null | undefined,
+  fallbackName?: string | null,
+): string {
+  const raw = (fileType ?? "").trim();
+  if (raw) {
+    const lower = raw.toLowerCase();
+    if (MIME_LABEL[lower]) return MIME_LABEL[lower];
+    // không phải MIME (vd "PDF", "LUT", ".cube") -> bỏ dấu chấm, viết hoa
+    if (!lower.includes("/")) return raw.replace(/^\./, "").toUpperCase();
+    // MIME lạ -> lấy phần subtype rút gọn
+    const sub = lower.split("/")[1] ?? "";
+    const short = sub.split(/[.+-]/).pop() ?? sub;
+    if (short && short.length <= 5) return short.toUpperCase();
+  }
+  // suy ra từ đuôi tên/url file
+  const name = (fallbackName ?? "").split("?")[0];
+  const ext = name.includes(".") ? name.split(".").pop() : "";
+  if (ext && ext.length <= 5) return ext.toUpperCase();
+  return "FILE";
+}
+
 /** bytes -> "2.4 MB" */
 export function fileSize(bytes: number | null | undefined): string {
   const b = Number(bytes ?? 0);

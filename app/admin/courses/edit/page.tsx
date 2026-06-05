@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AdminShell from "../../../components/AdminShell";
 import ConfirmDialog from "../../../components/ConfirmDialog";
+import { PageLoader } from "../../../components/Loaders";
 import { useToast } from "../../../components/Toast";
 import { api } from "@/lib/api";
 
@@ -47,7 +48,6 @@ function EditInner() {
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [desc, setDesc] = useState("");
-  const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [chModalOpen, setChModalOpen] = useState(false);
   const [chTitle, setChTitle] = useState("");
@@ -64,7 +64,8 @@ function EditInner() {
   }, [courseId]);
 
   useEffect(() => {
-    load().catch((e) => setMsg((e as Error).message));
+    load().catch((e) => toast.error((e as Error).message || "Không tải được khóa học."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   function patchLessonLocal(chId: string, lsId: string, field: keyof Lesson, value: unknown) {
@@ -92,7 +93,6 @@ function EditInner() {
       }
     }
     setSaving(true);
-    setMsg("Đang lưu...");
     try {
       // MỘT request atomic — BE ghi trong transaction, không còn N+1 ghi dở.
       await api.patch(`/courses/${course.id}/tree`, {
@@ -114,10 +114,8 @@ function EditInner() {
           })),
         })),
       });
-      setMsg("");
       toast.success("Đã lưu khóa học.");
     } catch (e) {
-      setMsg("");
       toast.error((e as Error).message || "Lưu thất bại.");
     } finally {
       setSaving(false);
@@ -163,14 +161,14 @@ function EditInner() {
 
   if (!courseId) return <AdminShell title="Chỉnh sửa khóa học" subtitle=""><div className="panel" style={{ padding: 24 }}>Thiếu mã khóa học. <Link href="/admin/courses">← Quay lại</Link></div></AdminShell>;
 
+  if (!course) return <AdminShell title="Chỉnh sửa khóa học" subtitle="Đang tải khóa học..."><PageLoader label="Đang tải khóa học..." /></AdminShell>;
+
   return (
     <AdminShell
       title="Chỉnh sửa khóa học"
-      subtitle={course ? `${course.title} — quản lý chương, bài học & video.` : "Đang tải..."}
+      subtitle={`${course.title} — quản lý chương, bài học & video.`}
       actions={<button className="btn-sm" type="button" onClick={saveAll} disabled={saving}>{saving ? "Đang lưu..." : "Lưu khóa học"}</button>}
     >
-      {msg && <div className="panel" style={{ padding: 12, marginBottom: 14, color: "var(--accent)" }}>{msg}</div>}
-
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-h"><h3>Thông tin khóa học</h3></div>
         <div className="cmeta">

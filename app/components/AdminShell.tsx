@@ -56,6 +56,7 @@ export default function AdminShell({
   const [search, setSearch] = useState("");
   const badgeRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -87,6 +88,12 @@ export default function AdminShell({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setLogoutOpen(false);
+      // ⌘K / Ctrl+K: focus ô tìm kiếm
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -157,12 +164,14 @@ export default function AdminShell({
             <form className="search" onSubmit={onSearch}>
               {AdminIcon.search}
               <input
+                ref={searchRef}
                 type="text"
                 placeholder="Tìm khóa học..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 aria-label="Tìm khóa học"
               />
+              <kbd className="search-kbd">⌘K</kbd>
             </form>
 
             <div className={"notif" + (openMenu === "notif" ? " open" : "")} ref={notifRef}>

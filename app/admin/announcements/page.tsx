@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import { Spinner } from "../../components/Loaders";
 import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -38,7 +39,6 @@ export default function AnnouncementsPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [target, setTarget] = useState("ALL"); // "ALL" | courseId
-  const [msg, setMsg] = useState("");
   const [sending, setSending] = useState(false);
   const [edit, setEdit] = useState<Noti | null>(null);
   const [eTitle, setETitle] = useState("");
@@ -71,10 +71,11 @@ export default function AnnouncementsPage() {
     };
   }
 
+  const formValid = title.trim().length > 0 && body.trim().length > 0;
+
   async function send(asDraft: boolean) {
-    if (!title.trim()) return setMsg("Nhập tiêu đề.");
-    if (!body.trim()) return setMsg("Nhập nội dung.");
-    setMsg("");
+    if (!title.trim()) return toast.error("Vui lòng nhập tiêu đề.");
+    if (!body.trim()) return toast.error("Vui lòng nhập nội dung.");
     setSending(true);
     try {
       await api.post("/notifications/send", payload(asDraft));
@@ -114,6 +115,7 @@ export default function AnnouncementsPage() {
   }
   async function saveEdit() {
     if (!edit) return;
+    if (!eTitle.trim() || !eBody.trim()) return toast.error("Tiêu đề và nội dung không được để trống.");
     try {
       await api.patch(`/notifications/admin/${edit.id}`, { title: eTitle, body: eBody });
       toast.success("Đã cập nhật thông báo.");
@@ -129,7 +131,6 @@ export default function AnnouncementsPage() {
 
   return (
     <AdminShell title="Quản lý thông báo" subtitle="Tạo, gửi và quản lý thông báo tới học viên.">
-      {msg && <div className="panel" style={{ padding: 12, marginBottom: 14, color: "var(--accent)" }}>{msg}</div>}
       <div className="ann-grid">
         <div className="panel" style={{ alignSelf: "start" }}>
           <div className="panel-h"><h3>Tạo thông báo</h3></div>
@@ -149,10 +150,10 @@ export default function AnnouncementsPage() {
             </select>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn-sm" style={{ flex: 1, justifyContent: "center" }} type="button" disabled={sending} onClick={() => send(false)}>
-              {sending ? "Đang gửi..." : "Gửi thông báo"}
+            <button className="btn-sm" style={{ flex: 1, justifyContent: "center" }} type="button" disabled={sending || !formValid} onClick={() => send(false)}>
+              {sending ? <><Spinner size={14} /> Đang gửi...</> : "Gửi thông báo"}
             </button>
-            <button className="fld" style={{ width: "auto", fontWeight: 600, cursor: "pointer" }} type="button" disabled={sending} onClick={() => send(true)}>
+            <button className="fld" style={{ width: "auto", fontWeight: 600, cursor: "pointer", opacity: sending || !formValid ? 0.55 : 1 }} type="button" disabled={sending || !formValid} onClick={() => send(true)}>
               Lưu nháp
             </button>
           </div>
@@ -216,7 +217,7 @@ export default function AnnouncementsPage() {
           <div className="fwrap"><label className="flabel">Nội dung</label><textarea className="fld" rows={4} value={eBody} onChange={(e) => setEBody(e.target.value)} /></div>
           <div className="modal-act">
             <button className="btn-sec" type="button" onClick={() => setEdit(null)}>Hủy</button>
-            <button className="btn-sm" type="button" onClick={saveEdit}>Lưu</button>
+            <button className="btn-sm" type="button" disabled={!eTitle.trim() || !eBody.trim()} onClick={saveEdit}>Lưu</button>
           </div>
         </div>
       </div>

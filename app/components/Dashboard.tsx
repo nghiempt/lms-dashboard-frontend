@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { vnd } from "@/lib/format";
 import { Icon } from "./dashboardIcons";
 import DashboardShell from "./DashboardShell";
+import { Skeleton, SkeletonRows } from "./Loaders";
 
 interface DashboardData {
   coursesBought: number;
@@ -80,7 +81,7 @@ export default function Dashboard() {
         {STATS.map((s) => (
           <div key={s.lbl} className="panel stat">
             <div className="ic">{s.ic}</div>
-            <div className="val">{s.val}</div>
+            <div className="val">{data ? s.val : <Skeleton width={48} height={26} radius={6} />}</div>
             <div className="lbl">{s.lbl}</div>
           </div>
         ))}
@@ -143,6 +144,7 @@ export default function Dashboard() {
             <div>Trạng thái</div>
             <div />
           </div>
+          {!data && <SkeletonRows rows={4} />}
           {(data?.courses ?? []).map((c) => {
             const st = STATUS_LABEL[c.status] ?? STATUS_LABEL.LEARNING;
             return (

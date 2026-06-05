@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/dashboardIcons";
 import DashboardShell from "../components/DashboardShell";
+import { Skeleton, SkeletonRows } from "../components/Loaders";
 import { api } from "@/lib/api";
 import { formatDate, vnd } from "@/lib/format";
 
@@ -50,8 +51,14 @@ export default function PaymentPage() {
           <div key={s.lbl} className="panel stat">
             <div className="ic">{s.ic}</div>
             <div className="val">
-              {s.val}
-              {s.unit && <span style={{ fontSize: 14, color: "var(--muted-2)" }}>{s.unit}</span>}
+              {summary ? (
+                <>
+                  {s.val}
+                  {s.unit && <span style={{ fontSize: 14, color: "var(--muted-2)" }}>{s.unit}</span>}
+                </>
+              ) : (
+                <Skeleton width={80} height={26} radius={6} />
+              )}
             </div>
             <div className="lbl">{s.lbl}</div>
           </div>
@@ -82,6 +89,7 @@ export default function PaymentPage() {
           <div>Trạng thái</div>
           <div />
         </div>
+        {!summary && <SkeletonRows rows={4} />}
         {orders.map((o) => {
           const st = STATUS[o.status] ?? STATUS.PENDING;
           return (
@@ -105,7 +113,7 @@ export default function PaymentPage() {
             </div>
           );
         })}
-        {orders.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có hóa đơn.</div>}
+        {summary && orders.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có hóa đơn.</div>}
       </div>
     </DashboardShell>
   );

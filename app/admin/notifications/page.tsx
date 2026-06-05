@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
+import { SkeletonRows } from "../../components/Loaders";
 import { api } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 
@@ -33,8 +34,12 @@ function isToday(iso: string) {
 
 export default function AdminNotificationsPage() {
   const [rows, setRows] = useState<Log[]>([]);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
-    api.getFull<Log[]>("/activity", { limit: 50 }).then((r) => setRows(r.data ?? [])).catch(() => undefined);
+    api.getFull<Log[]>("/activity", { limit: 50 })
+      .then((r) => setRows(r.data ?? []))
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }, []);
 
   const today = rows.filter((r) => isToday(r.createdAt));
@@ -59,11 +64,12 @@ export default function AdminNotificationsPage() {
         <div className="panel-h" style={{ margin: 0, padding: "18px 22px", borderBottom: "1px solid var(--line)" }}>
           <h3>Hoạt động hệ thống</h3>
         </div>
+        {loading && <div style={{ padding: "12px 22px" }}><SkeletonRows rows={5} /></div>}
         {today.length > 0 && <div className="nf-sec">Hôm nay</div>}
         {today.map(Row)}
         {earlier.length > 0 && <div className="nf-sec">Trước đó</div>}
         {earlier.map(Row)}
-        {rows.length === 0 && <div className="ct-meta" style={{ padding: 22 }}>Chưa có hoạt động.</div>}
+        {!loading && rows.length === 0 && <div className="ct-meta" style={{ padding: 22 }}>Chưa có hoạt động.</div>}
       </div>
     </AdminShell>
   );

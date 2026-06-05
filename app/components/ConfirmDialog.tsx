@@ -6,6 +6,7 @@
    ============================================================ */
 
 import { useEffect } from "react";
+import { Spinner } from "./Loaders";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -59,8 +60,9 @@ export default function ConfirmDialog({
             className={tone === "primary" ? "btn-sm" : "btn-danger"}
             onClick={onConfirm}
             disabled={busy}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}
           >
-            {busy ? "Đang xử lý..." : confirmLabel}
+            {busy ? <><Spinner size={14} /> Đang xử lý...</> : confirmLabel}
           </button>
         </div>
       </div>

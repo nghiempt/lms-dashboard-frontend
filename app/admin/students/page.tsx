@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AdminShell from "../../components/AdminShell";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import { PageLoader, Spinner } from "../../components/Loaders";
 import { useToast } from "../../components/Toast";
 import { api } from "@/lib/api";
 import { formatDate, vnd } from "@/lib/format";
@@ -62,10 +63,15 @@ export default function AdminStudentsPage() {
   async function openDrawer(id: string) {
     setDrawerOpen(true);
     setDetail(null);
-    const d = await api.get<StudentDetail>(`/users/students/${id}`);
-    setDetail(d);
-    setEditName(d.fullName);
-    setEditLocked(d.status === "LOCKED");
+    try {
+      const d = await api.get<StudentDetail>(`/users/students/${id}`);
+      setDetail(d);
+      setEditName(d.fullName);
+      setEditLocked(d.status === "LOCKED");
+    } catch (e) {
+      toast.error((e as Error).message || "Không tải được thông tin học viên.");
+      setDrawerOpen(false);
+    }
   }
 
   async function saveDrawer() {
@@ -157,7 +163,7 @@ export default function AdminStudentsPage() {
             <button type="button" className="dw-x" onClick={() => setDrawerOpen(false)}>✕</button>
           </div>
           <div className="dw-body">
-            {!detail ? <div style={{ padding: 12 }}>Đang tải...</div> : (
+            {!detail ? <PageLoader label="Đang tải thông tin..." /> : (
               <>
                 <div className="dw-avatar">
                   <div className="a-av" style={{ width: 56, height: 56, fontSize: 18 }}>{initials(detail.fullName)}</div>
@@ -202,7 +208,7 @@ export default function AdminStudentsPage() {
           </div>
           <div className="dw-foot">
             <button type="button" className="btn-sec" onClick={() => setDrawerOpen(false)} disabled={saving}>Hủy</button>
-            <button type="button" className="btn-danger" onClick={saveDrawer} disabled={saving}>{saving ? "Đang lưu..." : "Lưu thay đổi"}</button>
+            <button type="button" className="btn-danger" onClick={saveDrawer} disabled={saving || !editName.trim() || !detail}>{saving ? <><Spinner size={14} /> Đang lưu...</> : "Lưu thay đổi"}</button>
           </div>
         </div>
       </div>

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { NbBook, NbCard, NbCheck, NbTag } from "../components/dashboardIcons";
 import DashboardShell from "../components/DashboardShell";
+import { SkeletonRows } from "../components/Loaders";
+import { useToast } from "../components/Toast";
 import { api } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 
@@ -30,10 +32,16 @@ function isToday(iso: string): boolean {
 }
 
 export default function NotificationsPage() {
+  const toast = useToast();
   const [items, setItems] = useState<Noti[]>([]);
+  const [loading, setLoading] = useState(true);
 
   function load() {
-    api.getFull<Noti[]>("/notifications/me", { limit: 50 }).then((r) => setItems(r.data ?? [])).catch(() => undefined);
+    setLoading(true);
+    api.getFull<Noti[]>("/notifications/me", { limit: 50 })
+      .then((r) => setItems(r.data ?? []))
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }
   useEffect(load, []);
 
@@ -42,8 +50,13 @@ export default function NotificationsPage() {
     setItems((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
   }
   async function markAll() {
-    await api.patch("/notifications/me/read-all").catch(() => undefined);
-    setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await api.patch("/notifications/me/read-all");
+      setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      toast.success("Đã đánh dấu tất cả là đã đọc.");
+    } catch (e) {
+      toast.error((e as Error).message || "Thao tác thất bại.");
+    }
   }
 
   const today = items.filter((n) => isToday(n.createdAt));
@@ -71,13 +84,15 @@ export default function NotificationsPage() {
           <a className="ct-act" onClick={markAll} style={{ cursor: "pointer" }}>Đánh dấu tất cả đã đọc</a>
         </div>
 
+        {loading && <div style={{ padding: "12px 22px" }}><SkeletonRows rows={5} /></div>}
+
         {today.length > 0 && <div className="nf-sec">Hôm nay</div>}
         {today.map(Row)}
 
         {earlier.length > 0 && <div className="nf-sec">Trước đó</div>}
         {earlier.map(Row)}
 
-        {items.length === 0 && <div className="ct-meta" style={{ padding: 22 }}>Chưa có thông báo nào.</div>}
+        {!loading && items.length === 0 && <div className="ct-meta" style={{ padding: 22 }}>Chưa có thông báo nào.</div>}
       </div>
     </DashboardShell>
   );

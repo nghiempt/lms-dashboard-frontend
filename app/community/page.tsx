@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/dashboardIcons";
 import DashboardShell from "../components/DashboardShell";
+import { SkeletonRows } from "../components/Loaders";
 import { api } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 
@@ -25,10 +26,13 @@ interface Post {
 export default function CommunityPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<Group[]>("/community/groups").then(setGroups).catch(() => undefined);
-    api.getFull<Post[]>("/community/posts", { limit: 10 }).then((r) => setPosts(r.data ?? [])).catch(() => undefined);
+    Promise.allSettled([
+      api.get<Group[]>("/community/groups").then(setGroups),
+      api.getFull<Post[]>("/community/posts", { limit: 10 }).then((r) => setPosts(r.data ?? [])),
+    ]).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -48,13 +52,15 @@ export default function CommunityPage() {
             </a>
           </div>
         ))}
-        {groups.length === 0 && <div className="panel" style={{ padding: 18 }}>Chưa có nhóm nào.</div>}
+        {loading && [0, 1].map((i) => <div key={i} className="panel" style={{ padding: 18 }}><div className="skeleton-row" style={{ margin: 0 }} /></div>)}
+        {!loading && groups.length === 0 && <div className="panel" style={{ padding: 18 }}>Chưa có nhóm nào.</div>}
       </div>
 
       <div className="panel">
         <div className="panel-h">
           <h3>Bài viết nổi bật</h3>
         </div>
+        {loading && <SkeletonRows rows={4} />}
         {posts.map((p) => (
           <div key={p.id} className="po-row">
             <div className="po-av">{(p.authorName ?? "?").charAt(0).toUpperCase()}</div>
@@ -67,7 +73,7 @@ export default function CommunityPage() {
             <div className="po-likes">♥ {p.likeCount}</div>
           </div>
         ))}
-        {posts.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có bài viết.</div>}
+        {!loading && posts.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có bài viết.</div>}
       </div>
     </DashboardShell>
   );

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../components/dashboardIcons";
 import DashboardShell from "../components/DashboardShell";
+import { Skeleton, SkeletonRows } from "../components/Loaders";
 import { api } from "@/lib/api";
 
 interface StudyStats {
@@ -62,7 +63,7 @@ export default function ProgressPage() {
         {STATS.map((s) => (
           <div key={s.lbl} className="panel stat">
             <div className="ic">{s.ic}</div>
-            <div className="val">{s.val}</div>
+            <div className="val">{stats && dash ? s.val : <Skeleton width={64} height={26} radius={6} />}</div>
             <div className="lbl">{s.lbl}</div>
           </div>
         ))}
@@ -88,6 +89,7 @@ export default function ProgressPage() {
         <div className="panel-h">
           <h3>Tiến độ theo khóa</h3>
         </div>
+        {!dash && <SkeletonRows rows={3} />}
         {courses.map((p) => (
           <div key={p.id} className="pg-row">
             <div className="ct-course">
@@ -105,7 +107,7 @@ export default function ProgressPage() {
             </div>
           </div>
         ))}
-        {courses.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có dữ liệu.</div>}
+        {dash && courses.length === 0 && <div className="ct-meta" style={{ padding: 12 }}>Chưa có dữ liệu.</div>}
       </div>
     </DashboardShell>
   );

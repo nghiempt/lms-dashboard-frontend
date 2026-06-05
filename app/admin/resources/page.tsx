@@ -3,16 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import AdminShell from "../../components/AdminShell";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import { Spinner } from "../../components/Loaders";
 import { useToast } from "../../components/Toast";
 import { api, uploadMedia } from "@/lib/api";
-import { fileSize } from "@/lib/format";
+import { fileSize, prettyFileType } from "@/lib/format";
 
-const GRID = "2.4fr 1.3fr 0.9fr 1.3fr 0.8fr 90px";
+const GRID = "2fr 0.8fr 0.9fr 1.2fr 0.7fr 1fr 80px";
 
 interface DocRow {
   id: string;
   title: string;
   fileType: string | null;
+  url: string | null;
   sizeBytes: number | null;
   downloadCount: number;
   course: { id: string; title: string } | null;
@@ -24,6 +26,9 @@ const FileSvg = () => (
 );
 const TrashSvg = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+);
+const OpenSvg = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><path d="M15 3h6v6M10 14 21 3" /></svg>
 );
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500MB như UI ghi
@@ -132,7 +137,7 @@ export default function AdminResourcesPage() {
           <span className="sub">{rows.length} tài liệu</span>
         </div>
         <div className="atbl-h" style={{ gridTemplateColumns: GRID }}>
-          <div>Tên tài liệu</div><div>Loại</div><div>Dung lượng</div><div>Thuộc khóa</div><div>Lượt tải</div><div />
+          <div>Tên tài liệu</div><div>Loại</div><div>Dung lượng</div><div>Thuộc khóa</div><div>Lượt tải</div><div>Liên kết</div><div />
         </div>
         {loadError && (
           <div className="list-error">
@@ -144,12 +149,21 @@ export default function AdminResourcesPage() {
         {rows.map((row) => (
           <div key={row.id} className="atbl-r" style={{ gridTemplateColumns: GRID }}>
             <div className="a-name"><div className="a-ic"><FileSvg /></div><div className="a-nm">{row.title}</div></div>
-            <div className="a-sub" style={{ fontSize: 13, color: "var(--muted)" }}>{row.fileType ?? "—"}</div>
+            <div><span className="ftype-chip">{prettyFileType(row.fileType, row.url || row.title)}</span></div>
             <div className="a-sub" style={{ fontSize: 13, color: "var(--muted)" }}>{fileSize(row.sizeBytes)}</div>
             <div className="a-sub" style={{ fontSize: 13, color: "var(--muted)" }}>{row.course?.title ?? "Tất cả khóa"}</div>
             <div className="a-nm">{row.downloadCount} tải</div>
+            <div>
+              {row.url ? (
+                <a className="doc-link" href={row.url} target="_blank" rel="noopener noreferrer">
+                  <OpenSvg /> Mở file
+                </a>
+              ) : (
+                <span className="a-sub" style={{ fontSize: 13, color: "var(--muted-2)" }}>—</span>
+              )}
+            </div>
             <div className="a-act">
-              <button type="button" className="del" onClick={() => setDelRow(row)}><TrashSvg /></button>
+              <button type="button" className="del" aria-label="Xóa" onClick={() => setDelRow(row)}><TrashSvg /></button>
             </div>
           </div>
         ))}
@@ -199,7 +213,9 @@ export default function AdminResourcesPage() {
           </div>
           <div className="modal-act">
             <button type="button" className="btn-sec" onClick={() => setModalOpen(false)}>Hủy</button>
-            <button type="button" className="btn-danger" disabled={!picked || busy} onClick={upload}>{busy ? "Đang tải..." : "Tải lên"}</button>
+            <button type="button" className="btn-danger" disabled={!picked || !name.trim() || busy} onClick={upload}>
+              {busy ? <><Spinner size={14} /> Đang tải...</> : "Tải lên"}
+            </button>
           </div>
         </div>
       </div>

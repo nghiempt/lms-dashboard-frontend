@@ -4,6 +4,7 @@
    Toast system dùng chung toàn app.
    - Bọc <ToastProvider> ở root layout.
    - Dùng `const toast = useToast();` rồi gọi toast.success/error/info.
+   - Tự tắt sau 3s, có icon + màu theo loại, slide-in từ phải.
    ============================================================ */
 
 import {
@@ -20,6 +21,7 @@ interface ToastItem {
   id: number;
   kind: ToastKind;
   message: string;
+  leaving?: boolean;
 }
 
 interface ToastApi {
@@ -28,6 +30,31 @@ interface ToastApi {
   info: (message: string) => void;
 }
 
+const DURATION = 3000; // tự tắt sau 3s theo yêu cầu
+
+const ToastIcon = ({ kind }: { kind: ToastKind }) => {
+  if (kind === "success")
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <path d="M22 4 12 14.01l-3-3" />
+      </svg>
+    );
+  if (kind === "error")
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M15 9l-6 6M9 9l6 6" />
+      </svg>
+    );
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4M12 8h.01" />
+    </svg>
+  );
+};
+
 const ToastContext = createContext<ToastApi | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -35,7 +62,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const seq = useRef(0);
 
   const remove = useCallback((id: number) => {
-    setItems((list) => list.filter((t) => t.id !== id));
+    // đánh dấu rời đi để chạy animation trượt ra rồi mới gỡ khỏi DOM
+    setItems((list) => list.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    setTimeout(() => {
+      setItems((list) => list.filter((t) => t.id !== id));
+    }, 220);
   }, []);
 
   const push = useCallback(
@@ -43,7 +74,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       if (!message) return;
       const id = ++seq.current;
       setItems((list) => [...list, { id, kind, message }]);
-      setTimeout(() => remove(id), 4000);
+      setTimeout(() => remove(id), DURATION);
     },
     [remove],
   );
@@ -65,7 +96,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="toast-wrap" role="region" aria-label="Thông báo">
         {items.map((t) => (
-          <div key={t.id} className={"toast toast-" + t.kind} role="status">
+          <div
+            key={t.id}
+            className={"toast toast-" + t.kind + (t.leaving ? " leaving" : "")}
+            role={t.kind === "error" ? "alert" : "status"}
+          >
+            <span className="toast-ic" aria-hidden="true">
+              <ToastIcon kind={t.kind} />
+            </span>
             <span className="toast-msg">{t.message}</span>
             <button
               type="button"
@@ -75,6 +113,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             >
               ✕
             </button>
+            <span className="toast-bar" />
           </div>
         ))}
       </div>
