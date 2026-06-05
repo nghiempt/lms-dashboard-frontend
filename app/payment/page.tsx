@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "../components/dashboardIcons";
 import DashboardShell from "../components/DashboardShell";
 import { Skeleton, SkeletonRows } from "../components/Loaders";
@@ -30,6 +31,7 @@ const STATUS = {
 } as Record<string, { cls: string; label: string }>;
 
 export default function PaymentPage() {
+  const router = useRouter();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
 
@@ -37,6 +39,13 @@ export default function PaymentPage() {
     api.get<Summary>("/orders/my/summary").then(setSummary).catch(() => undefined);
     api.getFull<Order[]>("/orders/my", { limit: 50 }).then((r) => setOrders(r.data ?? [])).catch(() => undefined);
   }, []);
+
+  // Tiếp tục thanh toán 1 đơn còn treo: ghi vào sessionStorage để trang
+  // catalog khôi phục QR qua status API (xem PENDING_KEY trong courses/catalog).
+  function resumePay(orderId: string) {
+    sessionStorage.setItem("lms_pending_pay", JSON.stringify({ orderId }));
+    router.push("/courses/catalog");
+  }
 
   const STATS = [
     { ic: Icon.card, val: vnd(summary?.totalPaid ?? 0), unit: "đ", lbl: "Tổng đã thanh toán" },
@@ -107,7 +116,7 @@ export default function PaymentPage() {
               </div>
               <div style={{ textAlign: "right" }}>
                 {o.status === "PENDING" && (
-                  <a className="ct-act" href="/courses/catalog">Thanh toán</a>
+                  <button type="button" className="ct-act" style={{ cursor: "pointer" }} onClick={() => resumePay(o.id)}>Thanh toán</button>
                 )}
               </div>
             </div>
