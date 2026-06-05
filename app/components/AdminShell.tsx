@@ -13,6 +13,7 @@ const LOGO = "/assets/16f53e33ca.png";
 const NAV_MENU = [
   { label: "Tổng quan", href: "/admin", icon: AdminIcon.home },
   { label: "Quản lý khóa học", href: "/admin/courses", icon: AdminIcon.book },
+  { label: "Landing Page", href: "/admin/landing", icon: AdminIcon.layout },
   { label: "Quản lý học viên", href: "/admin/students", icon: AdminIcon.users },
   { label: "Đơn hàng", href: "/admin/orders", icon: AdminIcon.cart },
   { label: "Kho tài liệu", href: "/admin/resources", icon: AdminIcon.folder },
