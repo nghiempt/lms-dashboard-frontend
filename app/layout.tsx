@@ -11,8 +11,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Dashboard — VIDEO EDITOR",
-  description: "Khu vực học viên: theo dõi tiến độ, khóa học và thống kê học tập.",
+  title: "Danmotion",
+  description: "Khóa học đầu tiên tại Việt Nam tập trung vào style edit kiểu Apple & Devin Jatho — dạng video đang được nhiều khách hàng quốc tế trả giá cao.",
 };
 
 export default function RootLayout({

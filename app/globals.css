@@ -227,6 +227,9 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.02em; margin: 0; }
 }
 .auth .btn-primary { background: linear-gradient(120deg, #ff8016, #ffdea9); -webkit-background-clip: padding-box; background-clip: padding-box; color: var(--btn-ink); }
 .auth .btn-primary:hover { transform: translateY(-2px); }
+.auth .btn:disabled { opacity: 0.75; cursor: not-allowed; transform: none; }
+.spin { animation: spin 0.7s linear infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .btn-google { margin-top: 0; background: var(--surface); border-color: var(--line); color: var(--text); letter-spacing: 0.02em; text-transform: none; font-weight: 600; }
 .btn-google:hover { background: var(--surface-2); border-color: color-mix(in oklch, var(--text) 22%, transparent); }
 

@@ -37,6 +37,12 @@ const BackIcon = () => (
     <path d="M19 12H5M11 18l-6-6 6-6" />
   </svg>
 );
+const Spinner = () => (
+  <svg className="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" />
+    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+  </svg>
+);
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
     <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.5 29.5 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5 43.5 34.8 43.5 24c0-1.2-.1-2.3-.4-3.5z" />
@@ -275,7 +281,7 @@ export default function Login() {
             <div className="field">
               <label>Email</label>
               <div className="ctrl">
-                <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" required />
+                <input type="email" name="email" placeholder="nguyenvana@gmail.com" autoComplete="email" required />
               </div>
             </div>
             <PasswordField label="Mật khẩu" name="password" placeholder="••••••••" autoComplete="current-password" />
@@ -286,13 +292,13 @@ export default function Login() {
               <button type="button" className="link-btn" onClick={openForgot}>Quên mật khẩu?</button>
             </div>
             <button className="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? "Đang xử lý..." : "Đăng nhập"}
+              {loading ? (<><Spinner /> Đang xử lý...</>) : "Đăng nhập"}
             </button>
             <div className="divider">hoặc</div>
-            <button className="btn btn-google" type="button" onClick={onGoogle}>
+            {/* <button className="btn btn-google" type="button" onClick={onGoogle}>
               <GoogleIcon />
               Tiếp tục với Google
-            </button>
+            </button> */}
             <p className="swap">
               Chưa có tài khoản? <a onClick={() => setTab("register")}>Đăng ký ngay</a>
             </p>
@@ -312,7 +318,7 @@ export default function Login() {
             <div className="field">
               <label>Email</label>
               <div className="ctrl">
-                <input type="email" name="email" placeholder="ban@email.com" autoComplete="email" required />
+                <input type="email" name="email" placeholder="nguyenvana@gmail.com" autoComplete="email" required />
               </div>
             </div>
             <PasswordField label="Mật khẩu" name="password" placeholder="Tối thiểu 8 ký tự" autoComplete="new-password" />
@@ -324,13 +330,13 @@ export default function Login() {
               </label>
             </div>
             <button className="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? "Đang xử lý..." : "Tạo tài khoản"}
+              {loading ? (<><Spinner /> Đang xử lý...</>) : "Tạo tài khoản"}
             </button>
             <div className="divider">hoặc</div>
-            <button className="btn btn-google" type="button" onClick={onGoogle}>
+            {/* <button className="btn btn-google" type="button" onClick={onGoogle}>
               <GoogleIcon />
               Tiếp tục với Google
-            </button>
+            </button> */}
             <p className="swap">
               Đã có tài khoản? <a onClick={() => setTab("login")}>Đăng nhập</a>
             </p>
@@ -353,11 +359,11 @@ export default function Login() {
           </p>
           <form onSubmit={submitForgot}>
             <div className="field">
-              <label>Email</label>
+              {/* <label>Email</label> */}
               <div className="ctrl">
                 <input
                   type="email"
-                  placeholder="ban@email.com"
+                  placeholder="nguyenvana@gmail.com"
                   autoComplete="email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
@@ -371,7 +377,7 @@ export default function Login() {
             <div className="modal-act" style={{ marginTop: 16 }}>
               <button type="button" className="btn-sec" onClick={() => setForgotOpen(false)}>Đóng</button>
               <button type="submit" className="btn btn-primary" style={{ width: "auto" }} disabled={forgotBusy}>
-                {forgotBusy ? "Đang gửi..." : "Gửi liên kết"}
+                {forgotBusy ? (<><Spinner /> Đang gửi...</>) : "Gửi liên kết"}
               </button>
             </div>
           </form>
