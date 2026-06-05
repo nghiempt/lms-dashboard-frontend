@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ToastProvider } from "./components/Toast";
 
@@ -22,6 +23,11 @@ export default function RootLayout({
     <html lang="vi" className={inter.variable}>
       <body>
         <ToastProvider>{children}</ToastProvider>
+        <Script
+          src="https://feedback.tino.vn/feedback-widget.js"
+          data-api-key="ede9009d-df6a-4d5b-af73-84478ff3c4cb"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
